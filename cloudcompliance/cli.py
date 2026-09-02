@@ -15,9 +15,25 @@ def main():
     parser = argparse.ArgumentParser(
         description="CloudCompliance — SOC2 evidence, drift detection, history, AI assistant and auto-remediation"
     )
+    parser.add_argument(
+        "--tfstate",
+        default=str(Path(__file__).parent.parent / "terraform" / "terraform.tfstate"),
+        help="Path or S3 URI to terraform.tfstate (e.g. s3://my-bucket/terraform.tfstate)"
+    )
     subparsers = parser.add_subparsers(dest="command")
 
-    subparsers.add_parser("report", help="Generate SOC2 compliance evidence report")
+    report_parser = subparsers.add_parser("report", help="Generate compliance evidence report")
+    report_parser.add_argument(
+        "--framework",
+        default="soc2",
+        choices=["soc2", "hipaa", "pcidss"],
+        help="Compliance framework to evaluate against (default: soc2)"
+    )
+    report_parser.add_argument(
+        "--rego",
+        default=None,
+        help="Path to a custom OPA Rego policy file to evaluate alongside standard controls"
+    )
 
     drift_parser = subparsers.add_parser("drift", help="Detect infrastructure drift")
     drift_parser.add_argument(
@@ -86,12 +102,12 @@ def main():
 
     args = parser.parse_args()
 
-    tfstate_path = Path(__file__).parent.parent / "terraform" / "terraform.tfstate"
+    tfstate_path = args.tfstate
 
     if args.command == "drift":
         from cloudcompliance.drift.detector import DriftDetector
         detector = DriftDetector(
-            tfstate_path=str(tfstate_path),
+            tfstate_path=tfstate_path,
             endpoint_url=args.endpoint
         )
         drift_count = detector.run()
@@ -128,10 +144,28 @@ def main():
 
     else:
         console.print(f"[dim]Reading state from: {tfstate_path}[/dim]")
-        tfstate = load_tfstate(str(tfstate_path))
+        tfstate = load_tfstate(tfstate_path)
         resources = extract_resources(tfstate)
-        results = evaluate_controls(resources)
-        print_report(results, resources)
+        
+        from cloudcompliance.report import load_controls
+        framework = getattr(args, "framework", "soc2")
+        controls = load_controls(framework)
+        
+        results = evaluate_controls(resources, controls)
+        
+        if getattr(args, "rego", None):
+            from cloudcompliance.opa import evaluate_rego
+            console.print(f"[dim]Evaluating custom Rego policy: {args.rego}[/dim]")
+            rego_results = evaluate_rego(tfstate_path, args.rego)
+            if "violations" in rego_results and rego_results["violations"]:
+                console.print(f"\n[red]🔴 Custom OPA Rego Violations Found: {len(rego_results['violations'])}[/red]")
+                for v in rego_results["violations"]:
+                    console.print(f"  - [red]{v}[/red]")
+                console.print()
+            elif "violations" in rego_results:
+                console.print("[green]✅ Custom OPA Rego Policy: PASS[/green]\n")
+                
+        print_report(results, resources, framework=framework)
 
 
 if __name__ == "__main__":

@@ -15,15 +15,30 @@ from rich import box
 
 console = Console()
 
-def load_controls() -> dict:
+def load_controls(framework: str = "soc2") -> dict:
     controls_path = Path(__file__).parent / "controls.json"
     with open(controls_path) as f:
-        return json.load(f)
-
-SOC2_CONTROLS = load_controls()
+        all_frameworks = json.load(f)
+        if framework not in all_frameworks:
+            console.print(f"[red]Error: Framework '{framework}' not found in controls.json[/red]")
+            sys.exit(1)
+        return all_frameworks[framework]
 
 
 def load_tfstate(path: str) -> dict:
+    if path.startswith("s3://"):
+        import boto3
+        s3 = boto3.client("s3")
+        path_without_scheme = path[5:]
+        bucket_name = path_without_scheme.split("/")[0]
+        key = "/".join(path_without_scheme.split("/")[1:])
+        try:
+            response = s3.get_object(Bucket=bucket_name, Key=key)
+            return json.loads(response['Body'].read().decode('utf-8'))
+        except Exception as e:
+            console.print(f"[red]Error fetching tfstate from S3: {e}[/red]")
+            sys.exit(1)
+            
     tfstate_path = Path(path)
     if not tfstate_path.exists():
         console.print(f"[red]Error: tfstate not found at {path}[/red]")
@@ -46,10 +61,10 @@ def extract_resources(tfstate: dict) -> list:
     return resources
 
 
-def evaluate_controls(resources: list) -> dict:
+def evaluate_controls(resources: list, controls: dict) -> dict:
     found_types = set(r["type"] for r in resources)
     results = {}
-    for control_id, control in SOC2_CONTROLS.items():
+    for control_id, control in controls.items():
         matched = [t for t in control["resources"] if t in found_types]
         missing = [t for t in control["resources"] if t not in found_types]
         if len(matched) == len(control["resources"]):
@@ -68,10 +83,10 @@ def evaluate_controls(resources: list) -> dict:
     return results
 
 
-def save_markdown(results: dict, resources: list, score: int, pass_count: int):
-    md_path = Path(__file__).parent.parent / "compliance" / "compliance_report.md"
+def save_markdown(results: dict, resources: list, score: int, pass_count: int, framework: str = "soc2"):
+    md_path = Path(__file__).parent.parent / "compliance" / f"{framework}_compliance_report.md"
     with open(md_path, "w") as f:
-        f.write("# CloudCompliance — SOC2 Evidence Report\n\n")
+        f.write(f"# CloudCompliance — {framework.upper()} Evidence Report\n\n")
         f.write(f"**Generated:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}  \n")
         f.write(f"**Total resources provisioned:** {len(resources)}  \n")
         f.write(f"**Compliance score:** {score}% ({pass_count}/{len(results)} controls passing)\n\n")
@@ -88,7 +103,7 @@ def save_markdown(results: dict, resources: list, score: int, pass_count: int):
             matched = ", ".join(result["matched"][:3]) if result["matched"] else "none"
             f.write(f"| {control_id} | {result['title']} | {status_md} | {matched} |\n")
         f.write(f"\n## Summary\n\n")
-        f.write(f"SOC2 Compliance Score: **{score}%** ({pass_count}/{len(results)} controls passing)\n\n")
+        f.write(f"{framework.upper()} Compliance Score: **{score}%** ({pass_count}/{len(results)} controls passing)\n\n")
         f.write("## Standards Referenced\n\n")
         f.write("- AICPA SOC2 Trust Services Criteria 2017\n")
         f.write("- CIS AWS Foundations Benchmark v2.0\n")
@@ -96,10 +111,10 @@ def save_markdown(results: dict, resources: list, score: int, pass_count: int):
     console.print(f"[dim]Markdown report → {md_path}[/dim]")
 
 
-def print_report(results: dict, resources: list, output_path: Path = None):
+def print_report(results: dict, resources: list, output_path: Path = None, framework: str = "soc2"):
     console.print()
     console.print(Panel.fit(
-        "[bold cyan]CloudCompliance — SOC2 Evidence Report[/bold cyan]\n"
+        f"[bold cyan]CloudCompliance — {framework.upper()} Evidence Report[/bold cyan]\n"
         f"[dim]Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}[/dim]\n"
         f"[dim]Total resources provisioned: {len(resources)}[/dim]",
         border_style="cyan"
@@ -131,7 +146,7 @@ def print_report(results: dict, resources: list, output_path: Path = None):
     score = int((pass_count / len(results)) * 100)
     color = "green" if score >= 80 else "yellow" if score >= 50 else "red"
     console.print(Panel.fit(
-        f"[bold {color}]SOC2 Compliance Score: {score}% ({pass_count}/{len(results)} controls passing)[/bold {color}]",
+        f"[bold {color}]{framework.upper()} Compliance Score: {score}% ({pass_count}/{len(results)} controls passing)[/bold {color}]",
         border_style=color
     ))
 
@@ -151,14 +166,14 @@ def print_report(results: dict, resources: list, output_path: Path = None):
     }
 
     if output_path is None:
-        output_path = Path(__file__).parent.parent / "compliance" / "compliance_report.json"
+        output_path = Path(__file__).parent.parent / "compliance" / f"{framework}_compliance_report.json"
 
     with open(output_path, "w") as f:
         json.dump(output, f, indent=2)
     console.print()
     console.print(f"[dim]Evidence saved → {output_path}[/dim]")
 
-    save_markdown(results, resources, score, pass_count)
+    save_markdown(results, resources, score, pass_count, framework)
 
     from cloudcompliance.history import save_score
     save_score(output_path)

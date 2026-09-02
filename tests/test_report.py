@@ -17,15 +17,16 @@ def test_evaluate_controls_all_pass():
         for res_type in ctrl["resources"]:
             mock_resources.append({"type": res_type, "name": f"mock_{res_type}"})
             
-    results = evaluate_controls(mock_resources)
+    results = evaluate_controls(mock_resources, controls)
     
     for control_id, result in results.items():
         assert result["status"] == "PASS"
 
 def test_evaluate_controls_partial_fail():
+    controls = load_controls()
     # Provide only one required resource for CC6.1
     mock_resources = [{"type": "aws_vpc", "name": "mock_vpc"}]
-    results = evaluate_controls(mock_resources)
+    results = evaluate_controls(mock_resources, controls)
     
     assert results["CC6.1"]["status"] == "PARTIAL"
     assert results["CC6.2"]["status"] == "FAIL"

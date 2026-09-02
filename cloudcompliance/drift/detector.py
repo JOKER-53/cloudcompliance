@@ -20,7 +20,7 @@ console = Console()
 
 class DriftDetector:
     def __init__(self, tfstate_path: str, endpoint_url: str = None):
-        self.tfstate_path = Path(tfstate_path)
+        self.tfstate_path = tfstate_path
         self.endpoint_url = endpoint_url
         self.session = boto3.Session(
             aws_access_key_id="test",
@@ -41,11 +41,8 @@ class DriftDetector:
         )
 
     def load_tfstate(self) -> dict:
-        if not self.tfstate_path.exists():
-            console.print(f"[red]Error: tfstate not found at {self.tfstate_path}[/red]")
-            sys.exit(1)
-        with open(self.tfstate_path) as f:
-            return json.load(f)
+        from cloudcompliance.report import load_tfstate
+        return load_tfstate(str(self.tfstate_path))
 
     def extract_tfstate_resources(self, tfstate: dict) -> dict:
         resources = {}
