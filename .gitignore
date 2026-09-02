@@ -2,7 +2,9 @@
 terraform.tfstate
 terraform.tfstate.backup
 .terraform.lock.hcl
-compliance/compliance_report.json
+compliance/*.json
+compliance/*.md
+compliance/*.db
 *.tfvars
 .env
 *.env
@@ -11,3 +13,5 @@ terraform/local-dev.tfvars
 dist/
 build/
 *.egg-info/
+__pycache__/
+*.py[cod]

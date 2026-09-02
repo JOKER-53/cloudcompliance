@@ -30,7 +30,7 @@ dependencies = [
 ]
 
 [project.scripts]
-cloudcompliance = "cloudcompliance.report:main"
+cloudcompliance = "cloudcompliance.cli:main"
 
 [project.urls]
 Homepage = "https://github.com/KADHIRAVANEG/cloudcompliance"
@@ -38,3 +38,6 @@ Repository = "https://github.com/KADHIRAVANEG/cloudcompliance"
 
 [tool.setuptools.packages.find]
 include = ["cloudcompliance*"]
+
+[project.optional-dependencies]
+dev = ["pytest>=7.0.0"]

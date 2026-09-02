@@ -1,0 +1,52 @@
+{
+  "CC6.1": {
+    "title": "Logical Access \u2014 Network Isolation",
+    "description": "Restrict logical access via private networking and ACLs",
+    "resources": ["aws_vpc", "aws_subnet", "aws_default_security_group"]
+  },
+  "CC6.2": {
+    "title": "Logical Access \u2014 Authentication Controls",
+    "description": "Enforce strong authentication, password policy, least privilege",
+    "resources": ["aws_iam_account_password_policy", "aws_iam_role", "aws_iam_policy", "aws_sns_topic"]
+  },
+  "CC6.3": {
+    "title": "Logical Access \u2014 Access Revocation",
+    "description": "Detect and alert on overly permissive IAM and resource policies",
+    "resources": ["aws_iam_role_policy", "aws_cloudwatch_metric_alarm"]
+  },
+  "CC6.6": {
+    "title": "Logical Access \u2014 Transmission Protection",
+    "description": "Protect data in transit \u2014 HTTPS only, deny plaintext",
+    "resources": ["aws_s3_bucket_policy"]
+  },
+  "CC6.7": {
+    "title": "Encryption \u2014 Data Protection",
+    "description": "Encrypt data at rest and in transit using KMS and HTTPS",
+    "resources": ["aws_kms_key", "aws_kms_alias", "aws_s3_bucket_server_side_encryption_configuration", "aws_s3_bucket_policy"]
+  },
+  "CC7.1": {
+    "title": "Threat Detection \u2014 Continuous Monitoring",
+    "description": "Monitor for anomalous activity and compliance drift",
+    "resources": ["aws_cloudwatch_metric_alarm", "aws_config_configuration_recorder", "aws_config_config_rule"]
+  },
+  "CC7.2": {
+    "title": "Audit Logging \u2014 Tamper-evident Records",
+    "description": "Log all activity with integrity validation and retention",
+    "resources": ["aws_s3_bucket_versioning", "aws_s3_bucket_public_access_block", "aws_config_delivery_channel", "aws_flow_log", "aws_cloudwatch_log_group"]
+  },
+  "CC7.3": {
+    "title": "Incident Response \u2014 Security Event Detection",
+    "description": "Detect and alert on unauthorized access and security incidents",
+    "resources": ["aws_cloudwatch_log_metric_filter", "aws_cloudwatch_log_group"]
+  },
+  "CC8.1": {
+    "title": "Change Management \u2014 IaC Controlled",
+    "description": "All infrastructure changes via version-controlled IaC",
+    "resources": ["aws_iam_role", "aws_config_configuration_recorder_status"]
+  },
+  "A1.1": {
+    "title": "Availability \u2014 Backup and Retention",
+    "description": "Ensure data availability via versioning, retention, and backup policies",
+    "resources": ["aws_s3_bucket_versioning", "aws_iam_role_policy_attachment"]
+  }
+}
