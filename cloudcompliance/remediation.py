@@ -90,6 +90,22 @@ class RemediationEngine:
                 "details": "Tagged for Terraform import"
             })
             console.print(f"[green]✅ Tagged unmanaged bucket: {bucket_name}[/green]")
+            
+            # Generate Terraform 1.5 import block
+            tf_content = f"""import {{
+  to = aws_s3_bucket.{bucket_name.replace('-', '_')}
+  id = "{bucket_name}"
+}}
+
+resource "aws_s3_bucket" "{bucket_name.replace('-', '_')}" {{
+  bucket = "{bucket_name}"
+  # Run 'terraform plan -generate-config-out=generated.tf' to complete configuration
+}}
+"""
+            tf_path = f"terraform/imports_{bucket_name}.tf"
+            finding["remediation"] = f"Review the generated {tf_path} and run terraform apply."
+            self.open_github_pr(finding, custom_file_path=tf_path, custom_file_content=tf_content)
+            
         except Exception as e:
             console.print(f"[yellow]Warning: Could not tag bucket {bucket_name}: {e}[/yellow]")
 
@@ -162,7 +178,7 @@ After merging, run `make deploy` to restore the expected state.
         console.print(f"[dim]PR error: {pr_resp.text[:200]}[/dim]")
         return ""
 
-    def open_github_pr(self, finding: dict):
+    def open_github_pr(self, finding: dict, custom_file_path: str = None, custom_file_content: str = None):
         if not self.github_token:
             console.print("[yellow]Warning: GITHUB_TOKEN not set — skipping PR creation[/yellow]")
             return
@@ -192,9 +208,13 @@ After merging, run `make deploy` to restore the expected state.
 
             console.print(f"[dim]Branch created: {branch_name}[/dim]")
 
-            # Add a remediation notes file as commit so PR can be created
             import base64
-            remediation_note = f"""# CloudCompliance Remediation
+            
+            if custom_file_path and custom_file_content:
+                file_path = custom_file_path
+                file_content_encoded = base64.b64encode(custom_file_content.encode()).decode()
+            else:
+                remediation_note = f"""# CloudCompliance Remediation
 
 **Resource:** {resource_id}
 **Severity:** {finding.get('severity', 'HIGH')}
@@ -208,8 +228,8 @@ After merging, run `make deploy` to restore the expected state.
 {finding.get('remediation', 'Run terraform apply')}
 ```
 """
-            # Get existing file SHA if exists
-            file_path = f"compliance/remediations/{resource_id.replace('/', '-')}-{timestamp}.md"
+                file_path = f"compliance/remediations/{resource_id.replace('/', '-')}-{timestamp}.md"
+                file_content_encoded = base64.b64encode(remediation_note.encode()).decode()
             file_url = f"https://api.github.com/repos/{self.github_repo}/contents/{file_path}"
 
             file_content = base64.b64encode(remediation_note.encode()).decode()
