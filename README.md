@@ -55,41 +55,51 @@ cloudcompliance drift
 cloudcompliance serve   # → http://localhost:8080
 ```
 
+## What's New in v2.0 (Advanced Features)
+
+- **Multi-Framework Support:** In addition to SOC2, inherently supports HIPAA and PCI-DSS using a newly decoupled JSON rule engine (`controls.json`).
+- **Multi-Cloud Readiness:** Maps standard controls directly to AWS, Azure (`azurerm`), and GCP (`google`) Terraform resources natively.
+- **Custom OPA/Rego Policies:** Write your own business-specific rules in Rego and run them alongside standard controls (`--rego`).
+- **Remote State Support:** Natively pull `terraform.tfstate` dynamically from AWS S3 (`--tfstate s3://...`).
+- **Automated TF Generation:** Remediation engine now auto-generates declarative **Terraform 1.5 import blocks** for unmanaged drift and opens GitHub PRs.
+- **Event-Driven Serverless Scanning:** Deploy the scanner as an AWS Lambda via EventBridge rules to instantly evaluate compliance the millisecond CloudTrail detects out-of-band mutations.
+
 ---
 
 ```bash
 ## CLI Commands
 
-# Deploy SOC2 baseline infrastructure
+# Deploy baseline infrastructure
 make deploy
 
-# Generate SOC2 compliance evidence report
+# Generate compliance evidence report (Default: SOC2)
 cloudcompliance report
+cloudcompliance report --framework hipaa
+cloudcompliance report --framework pcidss
+
+# Use remote state (S3) or custom OPA policies
+cloudcompliance report --tfstate s3://my-bucket/terraform.tfstate --rego custom-policy.rego
 
 # Detect infrastructure drift
 cloudcompliance drift
+cloudcompliance drift --tfstate s3://my-bucket/terraform.tfstate
 
-# Auto-remediate drift findings
+# Auto-remediate drift findings (Auto-generates Terraform imports)
 cloudcompliance remediate
 cloudcompliance remediate --dry-run
 
-# View compliance score history (SOC2 Type II evidence)
+# View compliance score history
 cloudcompliance history
 cloudcompliance history --export
 
 # Ask AI about your compliance state
 cloudcompliance ask "am I ready for a SOC2 audit?"
-cloudcompliance ask "what is my biggest security risk?"
-cloudcompliance ask "explain CC7.2 and how I implement it"
-cloudcompliance ask "what controls am I missing?"
 
 # Open live compliance dashboard
 cloudcompliance serve
-cloudcompliance serve --port 9090
 
 # Scheduled drift detection (runs every hour)
 cloudcompliance schedule
-cloudcompliance schedule --interval 30
 ```
 
 ---
@@ -318,20 +328,23 @@ cloudcompliance/
 │       ├── access_analyzer/   # CC6.3 — IAM access analyzer
 │       └── availability/      # A1.1 — Versioning, backup
 ├── cloudcompliance/
-│   ├── report.py              # SOC2 evidence generator + CLI
+│   ├── cli.py                 # Central CLI router
+│   ├── controls.json          # Abstracted mappings (SOC2, HIPAA, PCI-DSS)
+│   ├── report.py              # Evidence generator engine
 │   ├── history.py             # Score timeline (SQLite)
-│   ├── assistant.py           # AI compliance assistant (NVIDIA NIM)
+│   ├── assistant.py           # AI compliance assistant
 │   ├── dashboard.py           # Live dashboard (FastAPI)
+│   ├── lambda_handler.py      # AWS Lambda event-driven scanner
+│   ├── opa.py                 # OPA/Rego custom policy engine
 │   ├── drift/
 │   │   └── detector.py        # Drift detection engine
-│   └── remediation.py         # Auto-remediation engine
-├── compliance/                # Generated reports
-│   ├── compliance_report.json
-│   ├── compliance_report.md
-│   ├── drift_report.json
-│   ├── remediation_log.json
-│   ├── history.db
-│   └── history_export.json
+│   └── remediation.py         # Auto-remediation engine (generates import blocks)
+├── compliance/                # Ignored Generated artifacts (.md, .json, .db)
+├── terraform/
+│   └── modules/
+│       ├── event_driven_scanning/ # Lambda + EventBridge serverless setup
+│       └── ...
+├── tests/                     # Pytest suite
 ├── docs/                      # Project website (GitHub Pages)
 ├── scripts/
 │   └── start.sh               # One-command startup
@@ -469,7 +482,7 @@ version = "1.5.0"
 
 ## Tech Stack
 
-`Terraform` · `Python` · `FastAPI` · `AWS` · `LocalStack` · `GitHub Actions` · `NVIDIA NIM` · `SQLite` · `KMS` · `IAM` · `CloudWatch` · `SNS` · `AWS Config`
+`Terraform` · `Python` · `FastAPI` · `AWS` · `Azure` · `GCP` · `LocalStack` · `GitHub Actions` · `NVIDIA NIM` · `SQLite` · `OPA/Rego` · `pytest`
 
 ---
 
@@ -477,6 +490,7 @@ version = "1.5.0"
 
 | Version | What's new |
 |---------|-----------|
+| v2.0.0 | Multi-cloud, HIPAA/PCI-DSS, OPA/Rego custom policies, S3 remote state, TF 1.5 import generation, and EventBridge real-time scanning |
 | v1.6.0 | Slack notifications + scheduled drift detection |
 | v1.5.0 | Live dashboard — `cloudcompliance serve` |
 | v1.4.0 | Auto-remediation — GitHub PR for high-risk drift |
