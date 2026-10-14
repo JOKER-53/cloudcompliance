@@ -9,7 +9,7 @@ description = "SOC2 compliance evidence generator for Terraform AWS infrastructu
 readme = "README.md"
 license = "MIT"
 authors = [
-  {name = "Kadhiravan E.G.", email = "kadhiravaneg@gmail.com"}
+  {name = "Kadhiravan E.G.", email = "kadhiravan226@gmail.com"}
 ]
 keywords = ["soc2", "compliance", "terraform", "aws", "security", "iac"]
 classifiers = [
