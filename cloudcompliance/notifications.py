@@ -12,7 +12,7 @@ from pathlib import Path
 import requests
 from dotenv import load_dotenv
 
-load_dotenv(Path(__file__).parent.parent / ".env")
+load_dotenv()
 
 
 def get_webhook() -> str:
@@ -58,7 +58,7 @@ def notify_drift(findings: list, drift_count: int):
                 "pretext": f":warning: *CloudCompliance — {drift_count} Drift Finding(s) Detected*",
                 "fields": fields,
                 "footer": "CloudCompliance Drift Detection",
-                "footer_icon": "https://raw.githubusercontent.com/KADHIRAVANEG/cloudcompliance/main/docs/favicon.ico",
+                "footer_icon": "https://raw.githubusercontent.com/JOKER-53/cloudcompliance/main/docs/favicon.ico",
                 "ts": int(datetime.now().timestamp()),
                 "actions": [
                     {

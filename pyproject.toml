@@ -33,11 +33,17 @@ dependencies = [
 cloudcompliance = "cloudcompliance.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/KADHIRAVANEG/cloudcompliance"
-Repository = "https://github.com/KADHIRAVANEG/cloudcompliance"
+Homepage = "https://github.com/JOKER-53/cloudcompliance"
+Repository = "https://github.com/JOKER-53/cloudcompliance"
 
 [tool.setuptools.packages.find]
 include = ["cloudcompliance*"]
 
+[tool.setuptools.package-data]
+cloudcompliance = ["*.json"]
+
 [project.optional-dependencies]
-dev = ["pytest>=7.0.0"]
+dev = [
+  "pytest>=7.0.0",
+  "ruff>=0.1.0",
+]

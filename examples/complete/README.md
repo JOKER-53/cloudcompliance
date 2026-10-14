@@ -6,7 +6,7 @@ Deploys the full SOC2 baseline — all 7 controls — in a single module call.
 
 ```hcl
 module "cloudcompliance" {
-  source  = "KADHIRAVANEG/cloudcompliance/aws"
+  source  = "JOKER-53/cloudcompliance/aws"
   version = "1.0.0"
 
   project_name = "my-startup"
