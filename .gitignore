@@ -1,17 +1,69 @@
+# Python & bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+
+# Testing & Coverage
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+nosetests.xml
+coverage.xml
+*.cover
+
+# Terraform
 .terraform/
-terraform.tfstate
-terraform.tfstate.backup
+*.tfstate
+*.tfstate.*
+*.tfstate.backup
 .terraform.lock.hcl
-compliance/*.json
-compliance/*.md
-compliance/*.db
 *.tfvars
+!terraform/local.tfvars
+!terraform/prod.tfvars
+terraform/local-dev.tfvars
+
+# Environment & Secrets
 .env
 *.env
 !.env.example
-terraform/local-dev.tfvars
-dist/
-build/
-*.egg-info/
-__pycache__/
-*.py[cod]
+*.pem
+*.key
+
+# Runtime artifacts & Compliance evidence
+compliance/
+*.db
+*.db-journal
+
+# IDE & OS
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db

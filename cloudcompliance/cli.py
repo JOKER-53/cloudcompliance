@@ -7,18 +7,35 @@ import sys
 import argparse
 from pathlib import Path
 from rich.console import Console
-from cloudcompliance.report import load_tfstate, extract_resources, evaluate_controls, print_report
+from cloudcompliance.report import (
+    load_tfstate,
+    extract_resources,
+    evaluate_controls,
+    print_report,
+    get_default_tfstate_path,
+    get_default_compliance_dir,
+    load_controls,
+)
 
 console = Console()
 
+
 def main():
+    default_tfstate = str(get_default_tfstate_path())
+    default_compliance = str(get_default_compliance_dir())
+
     parser = argparse.ArgumentParser(
-        description="CloudCompliance — SOC2 evidence, drift detection, history, AI assistant and auto-remediation"
+        description="CloudCompliance — SOC2/HIPAA/PCI-DSS evidence, drift detection, history, AI assistant and auto-remediation"
     )
     parser.add_argument(
         "--tfstate",
-        default=str(Path(__file__).parent.parent / "terraform" / "terraform.tfstate"),
-        help="Path or S3 URI to terraform.tfstate (e.g. s3://my-bucket/terraform.tfstate)"
+        default=default_tfstate,
+        help=f"Path or S3 URI to terraform.tfstate (default: {default_tfstate})"
+    )
+    parser.add_argument(
+        "--output-dir",
+        default=default_compliance,
+        help=f"Directory to save compliance evidence and reports (default: {default_compliance})"
     )
     subparsers = parser.add_subparsers(dest="command")
 
@@ -30,6 +47,12 @@ def main():
         help="Compliance framework to evaluate against (default: soc2)"
     )
     report_parser.add_argument(
+        "--provider",
+        default="auto",
+        choices=["auto", "aws", "azure", "gcp", "all"],
+        help="Cloud provider scope for controls evaluation (default: auto)"
+    )
+    report_parser.add_argument(
         "--rego",
         default=None,
         help="Path to a custom OPA Rego policy file to evaluate alongside standard controls"
@@ -38,8 +61,8 @@ def main():
     drift_parser = subparsers.add_parser("drift", help="Detect infrastructure drift")
     drift_parser.add_argument(
         "--endpoint",
-        default="http://localhost:4566",
-        help="AWS endpoint URL (default: LocalStack)"
+        default=None,
+        help="AWS endpoint URL (default: from AWS_ENDPOINT_URL, LOCALSTACK_ENDPOINT, or standard AWS)"
     )
 
     history_parser = subparsers.add_parser("history", help="Show compliance score history")
@@ -74,6 +97,7 @@ def main():
         default=None,
         help="AWS endpoint URL"
     )
+
     schedule_parser = subparsers.add_parser("schedule", help="Run drift detection on a schedule")
     schedule_parser.add_argument(
         "--interval",
@@ -86,7 +110,7 @@ def main():
         default=None,
         help="AWS endpoint URL"
     )
-    
+
     serve_parser = subparsers.add_parser("serve", help="Start live compliance dashboard")
     serve_parser.add_argument(
         "--port",
@@ -98,11 +122,12 @@ def main():
         "--host",
         default="127.0.0.1",
         help="Host to bind to (default: 127.0.0.1)"
-    )    
+    )
 
     args = parser.parse_args()
 
     tfstate_path = args.tfstate
+    output_dir = Path(args.output_dir)
 
     if args.command == "drift":
         from cloudcompliance.drift.detector import DriftDetector
@@ -127,32 +152,35 @@ def main():
         from cloudcompliance.remediation import RemediationEngine
         engine = RemediationEngine(
             endpoint_url=args.endpoint,
-            dry_run=args.dry_run
+            dry_run=args.dry_run,
+            compliance_dir=output_dir
         )
         engine.run()
 
     elif args.command == "serve":
         from cloudcompliance.dashboard import serve
         serve(host=args.host, port=args.port)
-    
+
     elif args.command == "schedule":
         from cloudcompliance.scheduler import schedule
         schedule(
             interval_minutes=args.interval,
-            endpoint_url=args.endpoint
-        )    
+            endpoint_url=args.endpoint,
+            tfstate_path=tfstate_path
+        )
 
     else:
+        # Default or 'report' command
         console.print(f"[dim]Reading state from: {tfstate_path}[/dim]")
         tfstate = load_tfstate(tfstate_path)
         resources = extract_resources(tfstate)
-        
-        from cloudcompliance.report import load_controls
+
         framework = getattr(args, "framework", "soc2")
+        provider = getattr(args, "provider", "auto")
         controls = load_controls(framework)
-        
-        results = evaluate_controls(resources, controls)
-        
+
+        results = evaluate_controls(resources, controls, provider=provider)
+
         if getattr(args, "rego", None):
             from cloudcompliance.opa import evaluate_rego
             console.print(f"[dim]Evaluating custom Rego policy: {args.rego}[/dim]")
@@ -164,8 +192,8 @@ def main():
                 console.print()
             elif "violations" in rego_results:
                 console.print("[green]✅ Custom OPA Rego Policy: PASS[/green]\n")
-                
-        print_report(results, resources, framework=framework)
+
+        print_report(results, resources, framework=framework, output_dir=output_dir)
 
 
 if __name__ == "__main__":

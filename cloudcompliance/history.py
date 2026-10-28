@@ -5,6 +5,7 @@ Stores compliance scores over time for SOC2 Type II evidence
 """
 
 import json
+import os
 import sqlite3
 from datetime import datetime
 from pathlib import Path
@@ -15,12 +16,28 @@ from rich import box
 
 console = Console()
 
-DB_PATH = Path(__file__).parent.parent / "compliance" / "history.db"
+
+def get_default_compliance_dir() -> Path:
+    """Return default compliance output directory, supporting Lambda /tmp."""
+    if os.environ.get("LAMBDA_TASK_ROOT"):
+        return Path("/tmp/compliance")
+    if os.environ.get("COMPLIANCE_DIR"):
+        return Path(os.environ["COMPLIANCE_DIR"])
+    return Path.cwd() / "compliance"
 
 
-def get_db() -> sqlite3.Connection:
-    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(str(DB_PATH))
+def get_db_path() -> Path:
+    """Resolve database path dynamically."""
+    db_env = os.environ.get("CLOUDCOMPLIANCE_DB_PATH")
+    if db_env:
+        return Path(db_env)
+    return get_default_compliance_dir() / "history.db"
+
+
+def get_db(db_path: Path = None) -> sqlite3.Connection:
+    target_path = Path(db_path) if db_path else get_db_path()
+    target_path.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(str(target_path))
     conn.execute("""
         CREATE TABLE IF NOT EXISTS compliance_history (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -36,13 +53,14 @@ def get_db() -> sqlite3.Connection:
     return conn
 
 
-def save_score(report_path: Path):
+def save_score(report_path: Path, db_path: Path = None):
     """Save compliance score from report JSON to history database."""
-    if not report_path.exists():
-        console.print(f"[red]Error: report not found at {report_path}[/red]")
+    report_file = Path(report_path)
+    if not report_file.exists():
+        console.print(f"[red]Error: report not found at {report_file}[/red]")
         return
 
-    with open(report_path) as f:
+    with open(report_file) as f:
         report = json.load(f)
 
     score = report.get("compliance_score", 0)
@@ -53,7 +71,7 @@ def save_score(report_path: Path):
     )
     controls_total = len(controls)
 
-    conn = get_db()
+    conn = get_db(db_path=db_path)
     conn.execute("""
         INSERT INTO compliance_history
         (timestamp, score, controls_passing, controls_total, resources_count, report_json)
@@ -72,9 +90,9 @@ def save_score(report_path: Path):
     console.print(f"[dim]Score saved to history: {score}% ({controls_passing}/{controls_total} controls)[/dim]")
 
 
-def show_history(limit: int = 10):
+def show_history(limit: int = 10, db_path: Path = None):
     """Display compliance score history table."""
-    conn = get_db()
+    conn = get_db(db_path=db_path)
     rows = conn.execute("""
         SELECT timestamp, score, controls_passing, controls_total, resources_count
         FROM compliance_history
@@ -144,9 +162,9 @@ def show_history(limit: int = 10):
     ))
 
 
-def export_history(output_path: Path = None):
+def export_history(output_path: Path = None, db_path: Path = None):
     """Export history as JSON for auditors."""
-    conn = get_db()
+    conn = get_db(db_path=db_path)
     rows = conn.execute("""
         SELECT timestamp, score, controls_passing, controls_total, resources_count
         FROM compliance_history
@@ -170,8 +188,11 @@ def export_history(output_path: Path = None):
     }
 
     if output_path is None:
-        output_path = Path(__file__).parent.parent / "compliance" / "history_export.json"
+        output_path = get_default_compliance_dir() / "history_export.json"
+    else:
+        output_path = Path(output_path)
 
+    output_path.parent.mkdir(parents=True, exist_ok=True)
     with open(output_path, "w") as f:
         json.dump(data, f, indent=2)
 

@@ -7,6 +7,7 @@ def handler(event, context):
     AWS Lambda Handler for real-time drift detection triggered by EventBridge/CloudTrail.
     """
     print(f"Received event: {json.dumps(event)}")
+    os.environ.setdefault("COMPLIANCE_DIR", "/tmp/compliance")
     
     # Optional: check if the event is a relevant modification (e.g., RunInstances, CreateBucket)
     # and skip if not relevant to avoid running drift detection on every single read event.

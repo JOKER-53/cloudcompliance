@@ -6,8 +6,9 @@ Alerts when infrastructure changes outside of Terraform
 """
 
 import json
-import boto3
+import os
 import sys
+import boto3
 from datetime import datetime
 from pathlib import Path
 from rich.console import Console
@@ -19,26 +20,28 @@ console = Console()
 
 
 class DriftDetector:
-    def __init__(self, tfstate_path: str, endpoint_url: str = None):
+    def __init__(self, tfstate_path: str, endpoint_url: str = None, output_path: str = None):
         self.tfstate_path = tfstate_path
-        self.endpoint_url = endpoint_url
-        self.session = boto3.Session(
-            aws_access_key_id="test",
-            aws_secret_access_key="test",
-            region_name="us-east-1"
-        )
+        self.endpoint_url = endpoint_url or os.getenv("AWS_ENDPOINT_URL") or os.getenv("LOCALSTACK_ENDPOINT")
+        self.output_path = output_path
+        
+        region = os.getenv("AWS_DEFAULT_REGION", os.getenv("AWS_REGION", "us-east-1"))
+        session_kwargs = {"region_name": region}
+        
+        # Only inject dummy test keys for localstack if no explicit credentials exist
+        is_local = self.endpoint_url and ("localhost" in self.endpoint_url or "127.0.0.1" in self.endpoint_url or "localstack" in self.endpoint_url)
+        if is_local and not os.getenv("AWS_ACCESS_KEY_ID"):
+            session_kwargs["aws_access_key_id"] = "test"
+            session_kwargs["aws_secret_access_key"] = "test"
+            
+        self.session = boto3.Session(**session_kwargs)
         self.drift_findings = []
 
     def _client(self, service: str):
-        kwargs = {"region_name": "us-east-1"}
+        kwargs = {}
         if self.endpoint_url:
             kwargs["endpoint_url"] = self.endpoint_url
-        return self.session.client(
-            service,
-            aws_access_key_id="test",
-            aws_secret_access_key="test",
-            **kwargs
-        )
+        return self.session.client(service, **kwargs)
 
     def load_tfstate(self) -> dict:
         from cloudcompliance.report import load_tfstate
@@ -285,10 +288,19 @@ class DriftDetector:
             "drift_count": len(self.drift_findings),
             "findings": self.drift_findings
         }
-        output_path = Path(__file__).parent.parent.parent / "compliance" / "drift_report.json"
-        with open(output_path, "w") as f:
+        if self.output_path:
+            out_path = Path(self.output_path)
+        elif os.environ.get("LAMBDA_TASK_ROOT"):
+            out_path = Path("/tmp/compliance/drift_report.json")
+        elif os.environ.get("COMPLIANCE_DIR"):
+            out_path = Path(os.environ["COMPLIANCE_DIR"]) / "drift_report.json"
+        else:
+            out_path = Path.cwd() / "compliance" / "drift_report.json"
+
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(out_path, "w") as f:
             json.dump(output, f, indent=2)
-        console.print(f"\n[dim]Drift report saved → {output_path}[/dim]")
+        console.print(f"\n[dim]Drift report saved → {out_path}[/dim]")
 
     def run(self):
         tfstate = self.load_tfstate()
@@ -309,10 +321,11 @@ class DriftDetector:
 
 
 def main():
-    tfstate_path = Path(__file__).parent.parent.parent / "terraform" / "terraform.tfstate"
+    from cloudcompliance.report import get_default_tfstate_path
+    tfstate_path = get_default_tfstate_path()
     detector = DriftDetector(
         tfstate_path=str(tfstate_path),
-        endpoint_url="http://localhost:4566"
+        endpoint_url=os.getenv("LOCALSTACK_ENDPOINT", "http://localhost:4566")
     )
     drift_count = detector.run()
     sys.exit(1 if drift_count > 0 else 0)

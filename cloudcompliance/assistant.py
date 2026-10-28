@@ -16,35 +16,40 @@ from rich.markdown import Markdown
 from rich.panel import Panel
 from dotenv import load_dotenv
 
-load_dotenv(Path(__file__).parent.parent / ".env")
+load_dotenv()
 
 console = Console()
 
 NVIDIA_API_URL = "https://integrate.api.nvidia.com/v1/chat/completions"
-MODEL = "openai/gpt-oss-120b"
+MODEL = os.getenv("NVIDIA_MODEL", "meta/llama-3.2-11b-vision-instruct")
 
 
 def load_context() -> dict:
     """Load compliance report, drift report and tfstate as context."""
-    base = Path(__file__).parent.parent
+    from cloudcompliance.report import get_default_compliance_dir, get_default_tfstate_path
+    comp_dir = get_default_compliance_dir()
     context = {}
 
-    report_path = base / "compliance" / "compliance_report.json"
+    report_path = comp_dir / "compliance_report.json"
+    if not report_path.exists():
+        soc2_path = comp_dir / "soc2_compliance_report.json"
+        if soc2_path.exists():
+            report_path = soc2_path
     if report_path.exists():
         with open(report_path) as f:
             context["compliance_report"] = json.load(f)
 
-    drift_path = base / "compliance" / "drift_report.json"
+    drift_path = comp_dir / "drift_report.json"
     if drift_path.exists():
         with open(drift_path) as f:
             context["drift_report"] = json.load(f)
 
-    history_path = base / "compliance" / "history_export.json"
+    history_path = comp_dir / "history_export.json"
     if history_path.exists():
         with open(history_path) as f:
             context["history"] = json.load(f)
 
-    tfstate_path = base / "terraform" / "terraform.tfstate"
+    tfstate_path = get_default_tfstate_path()
     if tfstate_path.exists():
         with open(tfstate_path) as f:
             state = json.load(f)

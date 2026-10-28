@@ -14,7 +14,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 from rich.console import Console
 
-load_dotenv(Path(__file__).parent.parent / ".env")
+load_dotenv()
 
 console = Console()
 
@@ -44,7 +44,8 @@ def schedule(
     tfstate_path: str = None
 ):
     if tfstate_path is None:
-        tfstate_path = str(Path(__file__).parent.parent / "terraform" / "terraform.tfstate")
+        from cloudcompliance.report import get_default_tfstate_path
+        tfstate_path = str(get_default_tfstate_path())
 
     if endpoint_url is None:
         endpoint_url = os.getenv("LOCALSTACK_ENDPOINT", "http://localhost:4566")

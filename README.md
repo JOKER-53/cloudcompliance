@@ -106,6 +106,8 @@ cloudcompliance schedule
 
 ## Live Dashboard
 
+![CloudCompliance Live Dashboard](docs/images/dashboard.png)
+
 ```bash
 cloudcompliance serve
 ```
@@ -122,6 +124,8 @@ Opens a professional dashboard at `http://localhost:8080` showing:
 ---
 
 ## SOC2 Control Coverage
+
+![SOC2 Compliance Report](docs/images/cli-compliance-report.png)
 
 | Control | Title | Resources Enforced |
 |---------|-------|--------------------|
@@ -192,6 +196,8 @@ Opens a professional dashboard at `http://localhost:8080` showing:
 
 ## Auto-Remediation
 
+![Auto-Remediation Engine](docs/images/cli-auto-remediation.png)
+
 When drift is detected, CloudCompliance closes the loop automatically:
 
 - **LOW RISK** — patches resources instantly (tags, labels)
@@ -225,6 +231,8 @@ CloudCompliance sends Slack messages for:
 
 ## Scheduled Drift Detection
 
+![Drift Detection Report](docs/images/cli-drift-detection.png)
+
 Run drift detection automatically every hour:
 
 ```bash
@@ -242,6 +250,8 @@ cloudcompliance schedule --endpoint "" --interval 60
 
 ## AI Compliance Assistant
 
+![AI Compliance Assistant](docs/images/cli-ai-assistant.png)
+
 Powered by NVIDIA NIM. Reads your actual tfstate and compliance reports.
 
 ```bash
@@ -257,6 +267,8 @@ $ cloudcompliance ask "am I ready for a SOC2 audit?"
 ---
 
 ## Compliance Score History
+
+![Compliance Score History Timeline](docs/images/cli-compliance-history.png)
 
 SOC2 Type II requires evidence over time. Every report run is saved automatically.
 

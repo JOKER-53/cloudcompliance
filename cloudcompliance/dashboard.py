@@ -73,6 +73,8 @@ def load_history() -> list:
 @app.get("/api/status")
 def get_status():
     report = load_json(COMPLIANCE_DIR / "compliance_report.json")
+    if not report:
+        report = load_json(COMPLIANCE_DIR / "soc2_compliance_report.json")
     drift = load_json(COMPLIANCE_DIR / "drift_report.json")
     remediation = load_json(COMPLIANCE_DIR / "remediation_log.json")
     history = load_history()

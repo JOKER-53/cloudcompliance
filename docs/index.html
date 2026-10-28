@@ -104,6 +104,7 @@ footer a{color:var(--green)}
     CloudCompliance
   </div>
   <div class="nav-links">
+    <a href="#dashboard">Dashboard</a>
     <a href="#features">Features</a>
     <a href="#controls">Controls</a>
     <a href="#remediate">Remediation</a>
@@ -171,6 +172,15 @@ footer a{color:var(--green)}
   </div>
 </section>
 
+<section class="section" id="dashboard" style="text-align:center;">
+  <p class="section-tag">Live Dashboard</p>
+  <h2>Real-Time Compliance & Drift UI</h2>
+  <p class="section-sub">A web-based control center auto-refreshing every 30 seconds with live controls, drift alerts, and Type II timeline.</p>
+  <div style="border: 1px solid var(--border); border-radius: 12px; overflow: hidden; box-shadow: 0 20px 40px rgba(0,0,0,0.4); margin-bottom: 2rem;">
+    <img src="images/dashboard.png" alt="CloudCompliance Live Dashboard" style="width: 100%; height: auto; display: block;">
+  </div>
+</section>
+
 <section class="section" id="features">
   <p class="section-tag">Features</p>
   <h2>Everything in one CLI</h2>
@@ -222,7 +232,13 @@ footer a{color:var(--green)}
       <div class="feature-icon">⏰</div>
       <div class="feature-title">cloudcompliance schedule</div>
       <div class="feature-desc">Runs drift detection automatically every hour. Sends Slack alert when drift is found. Runs until Ctrl+C.</div>
-      <span class="feature-tag" style="background:rgba(74,222,128,0.15);color:#4ade80">v1.6.0 NEW</span>
+      <span class="feature-tag" style="background:rgba(74,222,128,0.15);color:#4ade80">v1.6.0</span>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon">📊</div>
+      <div class="feature-title">cloudcompliance serve</div>
+      <div class="feature-desc">Starts real-time web dashboard on port 8080 showing live compliance score ring, drift alerts, and historical timeline.</div>
+      <span class="feature-tag tag-new">v2.0.0 NEW</span>
     </div>
   </div>
 </section>
@@ -387,7 +403,7 @@ footer a{color:var(--green)}
       <div class="install-icon">🔷</div>
       <div class="install-title">Terraform module</div>
       <div class="install-sub">Use in your existing Terraform project</div>
-      <div class="install-code">source = "JOKER-53/cloudcompliance/aws"<br>version = "1.4.0"</div>
+      <div class="install-code">source = "JOKER-53/cloudcompliance/aws"<br>version = "2.0.0"</div>
     </div>
     <div class="install-card">
       <div class="install-icon">🐍</div>

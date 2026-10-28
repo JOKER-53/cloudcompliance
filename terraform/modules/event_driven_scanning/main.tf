@@ -1,14 +1,3 @@
-variable "tfstate_s3_uri" {
-  description = "The S3 URI of the terraform state file (e.g., s3://my-bucket/terraform.tfstate)"
-  type        = string
-}
-
-variable "auto_remediate" {
-  description = "Whether to run auto-remediation inside the Lambda"
-  type        = bool
-  default     = false
-}
-
 resource "aws_iam_role" "lambda_exec" {
   name = "cloudcompliance-lambda-role"
   assume_role_policy = jsonencode({
@@ -29,12 +18,12 @@ resource "aws_iam_role_policy_attachment" "lambda_policy" {
 }
 
 resource "aws_lambda_function" "drift_detector" {
-  filename         = "cloudcompliance.zip" # Assumes code is packaged
-  function_name    = "cloudcompliance-drift-detector"
-  role             = aws_iam_role.lambda_exec.arn
-  handler          = "cloudcompliance.lambda_handler.handler"
-  runtime          = "python3.9"
-  timeout          = 300
+  filename      = var.lambda_zip_path
+  function_name = "cloudcompliance-drift-detector"
+  role          = aws_iam_role.lambda_exec.arn
+  handler       = "cloudcompliance.lambda_handler.handler"
+  runtime       = "python3.11"
+  timeout       = 300
 
   environment {
     variables = {

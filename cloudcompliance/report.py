@@ -5,6 +5,7 @@ Reads terraform.tfstate and maps resources to SOC2 Trust Service Criteria
 """
 
 import json
+import os
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -14,6 +15,28 @@ from rich.panel import Panel
 from rich import box
 
 console = Console()
+
+
+def get_default_compliance_dir() -> Path:
+    """Return default compliance output directory, supporting Lambda /tmp."""
+    if os.environ.get("LAMBDA_TASK_ROOT"):
+        return Path("/tmp/compliance")
+    if os.environ.get("COMPLIANCE_DIR"):
+        return Path(os.environ["COMPLIANCE_DIR"])
+    return Path.cwd() / "compliance"
+
+
+def get_default_tfstate_path() -> Path:
+    """Resolve default tfstate location based on current working directory."""
+    candidates = [
+        Path.cwd() / "terraform" / "terraform.tfstate",
+        Path.cwd() / "terraform.tfstate",
+    ]
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    return candidates[0]
+
 
 def load_controls(framework: str = "soc2") -> dict:
     controls_path = Path(__file__).parent / "controls.json"
@@ -38,7 +61,7 @@ def load_tfstate(path: str) -> dict:
         except Exception as e:
             console.print(f"[red]Error fetching tfstate from S3: {e}[/red]")
             sys.exit(1)
-            
+
     tfstate_path = Path(path)
     if not tfstate_path.exists():
         console.print(f"[red]Error: tfstate not found at {path}[/red]")
@@ -61,18 +84,53 @@ def extract_resources(tfstate: dict) -> list:
     return resources
 
 
-def evaluate_controls(resources: list, controls: dict) -> dict:
-    found_types = set(r["type"] for r in resources)
+def get_resource_provider(res_type: str) -> str:
+    if not res_type:
+        return "other"
+    if res_type.startswith("aws_"):
+        return "aws"
+    if res_type.startswith("azurerm_") or res_type.startswith("azure_"):
+        return "azure"
+    if res_type.startswith("google_") or res_type.startswith("gcp_"):
+        return "gcp"
+    return "other"
+
+
+def evaluate_controls(resources: list, controls: dict, provider: str = "auto") -> dict:
+    found_types = set(r["type"] for r in resources if r.get("type"))
+
+    # Determine which cloud providers to evaluate
+    if provider and provider != "auto" and provider != "all":
+        target_providers = {provider.lower()}
+    elif provider == "all":
+        target_providers = {"aws", "azure", "gcp", "other"}
+    else:
+        # Auto-detect from resources present
+        detected = set(get_resource_provider(r["type"]) for r in resources if r.get("type"))
+        valid_detected = {p for p in detected if p != "other"}
+        target_providers = valid_detected if valid_detected else {"aws"}
+
     results = {}
     for control_id, control in controls.items():
-        matched = [t for t in control["resources"] if t in found_types]
-        missing = [t for t in control["resources"] if t not in found_types]
-        if len(matched) == len(control["resources"]):
+        # Filter control resource requirements to the target provider(s)
+        control_resources = control.get("resources", [])
+        filtered_resources = [
+            t for t in control_resources
+            if get_resource_provider(t) in target_providers or get_resource_provider(t) == "other"
+        ]
+        # Fallback if control defines no resources for target provider
+        effective_resources = filtered_resources if filtered_resources else control_resources
+
+        matched = [t for t in effective_resources if t in found_types]
+        missing = [t for t in effective_resources if t not in found_types]
+
+        if len(matched) == len(effective_resources) and len(effective_resources) > 0:
             status = "PASS"
         elif len(matched) > 0:
             status = "PARTIAL"
         else:
             status = "FAIL"
+
         results[control_id] = {
             "title": control["title"],
             "description": control["description"],
@@ -83,8 +141,10 @@ def evaluate_controls(resources: list, controls: dict) -> dict:
     return results
 
 
-def save_markdown(results: dict, resources: list, score: int, pass_count: int, framework: str = "soc2"):
-    md_path = Path(__file__).parent.parent / "compliance" / f"{framework}_compliance_report.md"
+def save_markdown(results: dict, resources: list, score: int, pass_count: int, framework: str = "soc2", output_dir: Path = None):
+    out_dir = Path(output_dir) if output_dir else get_default_compliance_dir()
+    out_dir.mkdir(parents=True, exist_ok=True)
+    md_path = out_dir / f"{framework}_compliance_report.md"
     with open(md_path, "w") as f:
         f.write(f"# CloudCompliance — {framework.upper()} Evidence Report\n\n")
         f.write(f"**Generated:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}  \n")
@@ -111,7 +171,7 @@ def save_markdown(results: dict, resources: list, score: int, pass_count: int, f
     console.print(f"[dim]Markdown report → {md_path}[/dim]")
 
 
-def print_report(results: dict, resources: list, output_path: Path = None, framework: str = "soc2"):
+def print_report(results: dict, resources: list, output_path: Path = None, framework: str = "soc2", output_dir: Path = None):
     console.print()
     console.print(Panel.fit(
         f"[bold cyan]CloudCompliance — {framework.upper()} Evidence Report[/bold cyan]\n"
@@ -143,7 +203,7 @@ def print_report(results: dict, resources: list, output_path: Path = None, frame
     console.print(table)
     console.print()
 
-    score = int((pass_count / len(results)) * 100)
+    score = int((pass_count / len(results)) * 100) if results else 0
     color = "green" if score >= 80 else "yellow" if score >= 50 else "red"
     console.print(Panel.fit(
         f"[bold {color}]{framework.upper()} Compliance Score: {score}% ({pass_count}/{len(results)} controls passing)[/bold {color}]",
@@ -165,25 +225,34 @@ def print_report(results: dict, resources: list, output_path: Path = None, frame
         "controls": results,
     }
 
-    if output_path is None:
-        output_path = Path(__file__).parent.parent / "compliance" / f"{framework}_compliance_report.json"
+    out_dir = Path(output_dir) if output_dir else get_default_compliance_dir()
+    out_dir.mkdir(parents=True, exist_ok=True)
 
-    with open(output_path, "w") as f:
+    if output_path is None:
+        target_output_path = out_dir / f"{framework}_compliance_report.json"
+    else:
+        target_output_path = Path(output_path)
+        target_output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    with open(target_output_path, "w") as f:
         json.dump(output, f, indent=2)
     console.print()
-    console.print(f"[dim]Evidence saved → {output_path}[/dim]")
+    console.print(f"[dim]Evidence saved → {target_output_path}[/dim]")
 
-    save_markdown(results, resources, score, pass_count, framework)
+    save_markdown(results, resources, score, pass_count, framework, output_dir=out_dir)
 
     from cloudcompliance.history import save_score
-    save_score(output_path)
+    save_score(target_output_path)
     # Slack notification
     from cloudcompliance.notifications import notify_compliance_score
     notify_compliance_score(score, pass_count, len(results), len(resources))
 
-def run(tfstate_path: str = None, output_path: str = None):
-    if tfstate_path is None:
-        tfstate_path = Path(__file__).parent.parent / "terraform" / "terraform.tfstate"
-    console.print(f"[dim]Reading state from: {tfstate_path}[/dim]")
-    tfstate = load_tfstate(str(tfstate_path))
+
+def run(tfstate_path: str = None, output_path: str = None, framework: str = "soc2", provider: str = "auto", output_dir: Path = None):
+    resolved_state = Path(tfstate_path) if tfstate_path else get_default_tfstate_path()
+    console.print(f"[dim]Reading state from: {resolved_state}[/dim]")
+    tfstate = load_tfstate(str(resolved_state))
     resources = extract_resources(tfstate)
+    controls = load_controls(framework)
+    results = evaluate_controls(resources, controls, provider=provider)
+    print_report(results, resources, output_path=Path(output_path) if output_path else None, framework=framework, output_dir=output_dir)
