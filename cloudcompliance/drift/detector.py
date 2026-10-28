@@ -20,10 +20,11 @@ console = Console()
 
 
 class DriftDetector:
-    def __init__(self, tfstate_path: str, endpoint_url: str = None, output_path: str = None):
+    def __init__(self, tfstate_path: str, endpoint_url: str = None, output_path: str = None, demo: bool = False):
         self.tfstate_path = tfstate_path
         self.endpoint_url = endpoint_url or os.getenv("AWS_ENDPOINT_URL") or os.getenv("LOCALSTACK_ENDPOINT")
         self.output_path = output_path
+        self.demo = demo
         
         region = os.getenv("AWS_DEFAULT_REGION", os.getenv("AWS_REGION", "us-east-1"))
         session_kwargs = {"region_name": region}
@@ -303,6 +304,38 @@ class DriftDetector:
         console.print(f"\n[dim]Drift report saved → {out_path}[/dim]")
 
     def run(self):
+        if self.demo:
+            console.print("[dim]Running in demo mode with sample infrastructure drift...[/dim]")
+            self.drift_findings = [
+                {
+                    "resource": "aws_security_group.default_deny_all",
+                    "resource_id": "sg-04a91fbc82e3",
+                    "drift_type": "MODIFIED",
+                    "severity": "CRITICAL",
+                    "description": "Ingress rule opened to 0.0.0.0/0 on port 22 outside Terraform",
+                    "remediation": "Revert unapproved ingress rule to maintain network isolation (CC6.1)"
+                },
+                {
+                    "resource": "aws_s3_bucket.cloudcompliance_audit_logs",
+                    "resource_id": "cloudcompliance-soc2-audit-logs",
+                    "drift_type": "MODIFIED",
+                    "severity": "HIGH",
+                    "description": "Server-side encryption algorithm changed from aws:kms to AES256",
+                    "remediation": "Restore KMS customer managed key encryption (CC6.7)"
+                },
+                {
+                    "resource": "aws_s3_bucket.untracked_data",
+                    "resource_id": "staging-data-untracked-bucket",
+                    "drift_type": "UNMANAGED",
+                    "severity": "MEDIUM",
+                    "description": "Unmanaged S3 bucket detected without required SOC2 compliance tags",
+                    "remediation": "Import resource into Terraform or apply ManagedBy=CloudCompliance tag"
+                }
+            ]
+            self.send_alert(len(self.drift_findings))
+            self.print_results()
+            return len(self.drift_findings)
+
         tfstate = self.load_tfstate()
         tfstate_resources = self.extract_tfstate_resources(tfstate)
 

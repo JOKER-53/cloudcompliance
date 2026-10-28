@@ -64,6 +64,11 @@ def main():
         default=None,
         help="AWS endpoint URL (default: from AWS_ENDPOINT_URL, LOCALSTACK_ENDPOINT, or standard AWS)"
     )
+    drift_parser.add_argument(
+        "--demo",
+        action="store_true",
+        help="Demonstrate drift detection with sample infrastructure drift"
+    )
 
     history_parser = subparsers.add_parser("history", help="Show compliance score history")
     history_parser.add_argument(
@@ -133,7 +138,8 @@ def main():
         from cloudcompliance.drift.detector import DriftDetector
         detector = DriftDetector(
             tfstate_path=tfstate_path,
-            endpoint_url=args.endpoint
+            endpoint_url=args.endpoint,
+            demo=getattr(args, "demo", False)
         )
         drift_count = detector.run()
         sys.exit(1 if drift_count > 0 else 0)
