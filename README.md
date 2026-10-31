@@ -1,8 +1,8 @@
-![SOC2 Compliance](https://github.com/JOKER-53/cloudcompliance/actions/workflows/compliance.yml/badge.svg)
+![SOC2 Compliance](https://github.com/JOKER-53/terraform-aws-cloudcompliance/actions/workflows/compliance.yml/badge.svg)
 [![Terraform Registry](https://img.shields.io/badge/Terraform%20Registry-cloudcompliance-7B42BC?logo=terraform)](https://registry.terraform.io/modules/JOKER-53/cloudcompliance/aws/latest)
 [![PyPI version](https://img.shields.io/pypi/v/cloudcompliance?color=blue)](https://pypi.org/project/cloudcompliance/)
 [![PyPI downloads](https://img.shields.io/pypi/dm/cloudcompliance)](https://pypi.org/project/cloudcompliance/)
-[![Docker](https://img.shields.io/badge/Docker-ghcr.io-2496ED?logo=docker)](https://github.com/JOKER-53/cloudcompliance/pkgs/container/cloudcompliance)
+[![Docker](https://img.shields.io/badge/Docker-ghcr.io-2496ED?logo=docker)](https://github.com/JOKER-53/terraform-aws-cloudcompliance/pkgs/container/cloudcompliance)
 ![Terraform](https://img.shields.io/badge/Terraform-1.15.6-7B42BC?logo=terraform)
 ![LocalStack](https://img.shields.io/badge/LocalStack-3.4.0-000000?logo=amazon-aws)
 ![Python](https://img.shields.io/badge/Python-3.11-3776AB?logo=python)
@@ -40,8 +40,8 @@ Every SOC2 control is provisioned automatically at infrastructure creation time.
 pip install cloudcompliance
 
 # 2. Clone the repo
-git clone https://github.com/JOKER-53/cloudcompliance.git
-cd cloudcompliance
+git clone https://github.com/JOKER-53/terraform-aws-cloudcompliance.git
+cd terraform-aws-cloudcompliance
 cp .env.example .env  # add your API keys
 
 # 3. Start everything in one command
@@ -209,7 +209,7 @@ $ cloudcompliance drift
 🟡 HIGH  cloudcompliance-encrypted-data  DELETED
 
 $ cloudcompliance remediate
-📋 PR opened: https://github.com/JOKER-53/cloudcompliance/pull/32
+📋 PR opened: https://github.com/JOKER-53/terraform-aws-cloudcompliance/pull/32
 Remediation log saved → compliance/remediation_log.json
 ```
 
@@ -516,4 +516,4 @@ version = "1.5.0"
 
 **Kadhiravan E.G.** — Cybersecurity student  
 GitHub: [@JOKER-53](https://github.com/JOKER-53)  
-Website: [CloudCompliance](https://joker-53.github.io/cloudcompliance)
+Website: [CloudCompliance](https://joker-53.github.io/terraform-aws-cloudcompliance)
