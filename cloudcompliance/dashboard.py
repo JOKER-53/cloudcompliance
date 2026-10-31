@@ -13,8 +13,21 @@ from fastapi import FastAPI
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 
-BASE = Path(__file__).parent.parent
-COMPLIANCE_DIR = BASE / "compliance"
+import os
+
+def get_compliance_dir() -> Path:
+    if os.environ.get("COMPLIANCE_DIR"):
+        return Path(os.environ["COMPLIANCE_DIR"])
+    cwd_dir = Path.cwd() / "compliance"
+    if cwd_dir.exists():
+        return cwd_dir
+    pkg_dir = Path(__file__).parent.parent / "compliance"
+    if pkg_dir.exists():
+        return pkg_dir
+    return cwd_dir
+
+COMPLIANCE_DIR = get_compliance_dir()
+BASE = COMPLIANCE_DIR.parent
 
 app = FastAPI(title="CloudCompliance Dashboard", version="1.4.0")
 
@@ -60,6 +73,8 @@ def load_history() -> list:
 @app.get("/api/status")
 def get_status():
     report = load_json(COMPLIANCE_DIR / "compliance_report.json")
+    if not report:
+        report = load_json(COMPLIANCE_DIR / "soc2_compliance_report.json")
     drift = load_json(COMPLIANCE_DIR / "drift_report.json")
     remediation = load_json(COMPLIANCE_DIR / "remediation_log.json")
     history = load_history()
@@ -194,7 +209,7 @@ nav{display:flex;justify-content:space-between;align-items:center;padding:0 1.5r
   <div class="nav-right">
     <div class="live"><div class="dot"></div><span id="lastUpdated">Loading...</span></div>
     <button class="btn" onclick="fetchStatus()"><i class="ti ti-refresh"></i> Refresh</button>
-    <button class="btn btn-green" onclick="window.open('https://github.com/KADHIRAVANEG/cloudcompliance','_blank')"><i class="ti ti-brand-github"></i> GitHub</button>
+    <button class="btn btn-green" onclick="window.open('https://github.com/JOKER-53/cloudcompliance','_blank')"><i class="ti ti-brand-github"></i> GitHub</button>
   </div>
 </nav>
 <div class="page">

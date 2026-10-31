@@ -4,12 +4,12 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "cloudcompliance"
-version = "1.4.0"
+version = "2.0.0"
 description = "SOC2 compliance evidence generator for Terraform AWS infrastructure"
 readme = "README.md"
 license = "MIT"
 authors = [
-  {name = "Kadhiravan E.G.", email = "kadhiravaneg@gmail.com"}
+  {name = "Kadhiravan E.G.", email = "kadhiravan226@gmail.com"}
 ]
 keywords = ["soc2", "compliance", "terraform", "aws", "security", "iac"]
 classifiers = [
@@ -30,11 +30,20 @@ dependencies = [
 ]
 
 [project.scripts]
-cloudcompliance = "cloudcompliance.report:main"
+cloudcompliance = "cloudcompliance.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/KADHIRAVANEG/cloudcompliance"
-Repository = "https://github.com/KADHIRAVANEG/cloudcompliance"
+Homepage = "https://github.com/JOKER-53/cloudcompliance"
+Repository = "https://github.com/JOKER-53/cloudcompliance"
 
 [tool.setuptools.packages.find]
 include = ["cloudcompliance*"]
+
+[tool.setuptools.package-data]
+cloudcompliance = ["*.json"]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=7.0.0",
+  "ruff>=0.1.0",
+]

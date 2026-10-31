@@ -1,0 +1,88 @@
+{
+  "soc2": {
+    "CC6.1": {
+      "title": "Logical Access \u2014 Network Isolation",
+      "description": "Restrict logical access via private networking and ACLs",
+      "resources": ["aws_vpc", "aws_subnet", "aws_default_security_group", "azurerm_virtual_network", "google_compute_network"]
+    },
+    "CC6.2": {
+      "title": "Logical Access \u2014 Authentication Controls",
+      "description": "Enforce strong authentication, password policy, least privilege",
+      "resources": ["aws_iam_account_password_policy", "aws_iam_role", "aws_iam_policy", "aws_sns_topic", "azurerm_role_assignment", "google_project_iam_member"]
+    },
+    "CC6.3": {
+      "title": "Logical Access \u2014 Access Revocation",
+      "description": "Detect and alert on overly permissive IAM and resource policies",
+      "resources": ["aws_iam_role_policy", "aws_cloudwatch_metric_alarm", "azurerm_monitor_metric_alert"]
+    },
+    "CC6.6": {
+      "title": "Logical Access \u2014 Transmission Protection",
+      "description": "Protect data in transit \u2014 HTTPS only, deny plaintext",
+      "resources": ["aws_s3_bucket_policy", "azurerm_storage_account", "google_storage_bucket_iam_binding"]
+    },
+    "CC6.7": {
+      "title": "Encryption \u2014 Data Protection",
+      "description": "Encrypt data at rest and in transit using KMS and HTTPS",
+      "resources": ["aws_kms_key", "aws_kms_alias", "aws_s3_bucket_server_side_encryption_configuration", "aws_s3_bucket_policy", "azurerm_key_vault_key", "google_kms_crypto_key"]
+    },
+    "CC7.1": {
+      "title": "Threat Detection \u2014 Continuous Monitoring",
+      "description": "Monitor for anomalous activity and compliance drift",
+      "resources": ["aws_cloudwatch_metric_alarm", "aws_config_configuration_recorder", "aws_config_config_rule"]
+    },
+    "CC7.2": {
+      "title": "Audit Logging \u2014 Tamper-evident Records",
+      "description": "Log all activity with integrity validation and retention",
+      "resources": ["aws_s3_bucket_versioning", "aws_s3_bucket_public_access_block", "aws_config_delivery_channel", "aws_flow_log", "aws_cloudwatch_log_group"]
+    },
+    "CC7.3": {
+      "title": "Incident Response \u2014 Security Event Detection",
+      "description": "Detect and alert on unauthorized access and security incidents",
+      "resources": ["aws_cloudwatch_log_metric_filter", "aws_cloudwatch_log_group", "azurerm_monitor_log_profile"]
+    },
+    "CC8.1": {
+      "title": "Change Management \u2014 IaC Controlled",
+      "description": "All infrastructure changes via version-controlled IaC",
+      "resources": ["aws_iam_role", "aws_config_configuration_recorder_status"]
+    },
+    "A1.1": {
+      "title": "Availability \u2014 Backup and Retention",
+      "description": "Ensure data availability via versioning, retention, and backup policies",
+      "resources": ["aws_s3_bucket_versioning", "aws_iam_role_policy_attachment", "azurerm_backup_policy_vm"]
+    }
+  },
+  "hipaa": {
+    "164.312(a)(1)": {
+      "title": "Access Control",
+      "description": "Implement technical policies and procedures for electronic information systems",
+      "resources": ["aws_vpc", "aws_subnet", "aws_iam_role", "azurerm_virtual_network", "google_compute_network"]
+    },
+    "164.312(a)(2)(iv)": {
+      "title": "Encryption and Decryption",
+      "description": "Implement a mechanism to encrypt and decrypt electronic protected health information",
+      "resources": ["aws_kms_key", "aws_s3_bucket_server_side_encryption_configuration", "azurerm_key_vault_key", "google_kms_crypto_key"]
+    },
+    "164.312(b)": {
+      "title": "Audit Controls",
+      "description": "Implement hardware, software, and/or procedural mechanisms that record and examine activity",
+      "resources": ["aws_cloudwatch_log_group", "aws_flow_log", "aws_config_delivery_channel", "azurerm_monitor_log_profile"]
+    }
+  },
+  "pcidss": {
+    "Req-1": {
+      "title": "Install and maintain network security controls",
+      "description": "Network security controls to restrict access to the cardholder data environment",
+      "resources": ["aws_vpc", "aws_subnet", "aws_default_security_group", "azurerm_virtual_network", "google_compute_network"]
+    },
+    "Req-3": {
+      "title": "Protect stored account data",
+      "description": "Protection methods such as encryption, truncation, masking, and hashing",
+      "resources": ["aws_kms_key", "aws_s3_bucket_server_side_encryption_configuration", "azurerm_key_vault_key"]
+    },
+    "Req-8": {
+      "title": "Identify users and authenticate access",
+      "description": "Assign a unique ID to each person with computer access",
+      "resources": ["aws_iam_account_password_policy", "aws_iam_role", "aws_iam_policy", "azurerm_role_assignment"]
+    }
+  }
+}

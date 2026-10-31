@@ -18,7 +18,7 @@ from rich.panel import Panel
 from rich.table import Table
 from rich import box
 
-load_dotenv(Path(__file__).parent.parent / ".env")
+load_dotenv()
 
 console = Console()
 
@@ -33,28 +33,37 @@ SEVERITY_RISK = {
 }
 
 
+def get_default_compliance_dir() -> Path:
+    if os.environ.get("LAMBDA_TASK_ROOT"):
+        return Path("/tmp/compliance")
+    if os.environ.get("COMPLIANCE_DIR"):
+        return Path(os.environ["COMPLIANCE_DIR"])
+    return Path.cwd() / "compliance"
+
+
 class RemediationEngine:
-    def __init__(self, endpoint_url: str = None, dry_run: bool = False):
-        self.endpoint_url = endpoint_url or os.getenv("LOCALSTACK_ENDPOINT", "http://localhost:4566")
+    def __init__(self, endpoint_url: str = None, dry_run: bool = False, compliance_dir: Path = None):
+        self.endpoint_url = endpoint_url or os.getenv("AWS_ENDPOINT_URL") or os.getenv("LOCALSTACK_ENDPOINT")
         self.dry_run = dry_run
         self.github_token = os.getenv("GITHUB_TOKEN")
-        self.github_repo = os.getenv("GITHUB_REPO", "KADHIRAVANEG/cloudcompliance")
+        self.github_repo = os.getenv("GITHUB_REPO", "JOKER-53/cloudcompliance")
+        self.compliance_dir = Path(compliance_dir) if compliance_dir else get_default_compliance_dir()
         self.actions_taken = []
         self.prs_opened = []
 
     def _client(self, service: str):
-        kwargs = {"region_name": "us-east-1"}
+        region = os.getenv("AWS_DEFAULT_REGION", os.getenv("AWS_REGION", "us-east-1"))
+        kwargs = {"region_name": region}
         if self.endpoint_url:
             kwargs["endpoint_url"] = self.endpoint_url
-        return boto3.client(
-            service,
-            aws_access_key_id="test",
-            aws_secret_access_key="test",
-            **kwargs
-        )
+        is_local = self.endpoint_url and ("localhost" in self.endpoint_url or "127.0.0.1" in self.endpoint_url or "localstack" in self.endpoint_url)
+        if is_local and not os.getenv("AWS_ACCESS_KEY_ID"):
+            kwargs["aws_access_key_id"] = "test"
+            kwargs["aws_secret_access_key"] = "test"
+        return boto3.client(service, **kwargs)
 
     def load_drift_report(self) -> dict:
-        drift_path = Path(__file__).parent.parent / "compliance" / "drift_report.json"
+        drift_path = self.compliance_dir / "drift_report.json"
         if not drift_path.exists():
             console.print("[yellow]No drift report found. Run 'cloudcompliance drift' first.[/yellow]")
             sys.exit(0)
@@ -90,6 +99,22 @@ class RemediationEngine:
                 "details": "Tagged for Terraform import"
             })
             console.print(f"[green]✅ Tagged unmanaged bucket: {bucket_name}[/green]")
+            
+            # Generate Terraform 1.5 import block
+            tf_content = f"""import {{
+  to = aws_s3_bucket.{bucket_name.replace('-', '_')}
+  id = "{bucket_name}"
+}}
+
+resource "aws_s3_bucket" "{bucket_name.replace('-', '_')}" {{
+  bucket = "{bucket_name}"
+  # Run 'terraform plan -generate-config-out=generated.tf' to complete configuration
+}}
+"""
+            tf_path = f"terraform/imports_{bucket_name}.tf"
+            finding["remediation"] = f"Review the generated {tf_path} and run terraform apply."
+            self.open_github_pr(finding, custom_file_path=tf_path, custom_file_content=tf_content)
+            
         except Exception as e:
             console.print(f"[yellow]Warning: Could not tag bucket {bucket_name}: {e}[/yellow]")
 
@@ -162,7 +187,7 @@ After merging, run `make deploy` to restore the expected state.
         console.print(f"[dim]PR error: {pr_resp.text[:200]}[/dim]")
         return ""
 
-    def open_github_pr(self, finding: dict):
+    def open_github_pr(self, finding: dict, custom_file_path: str = None, custom_file_content: str = None):
         if not self.github_token:
             console.print("[yellow]Warning: GITHUB_TOKEN not set — skipping PR creation[/yellow]")
             return
@@ -192,9 +217,13 @@ After merging, run `make deploy` to restore the expected state.
 
             console.print(f"[dim]Branch created: {branch_name}[/dim]")
 
-            # Add a remediation notes file as commit so PR can be created
             import base64
-            remediation_note = f"""# CloudCompliance Remediation
+            
+            if custom_file_path and custom_file_content:
+                file_path = custom_file_path
+                file_content_encoded = base64.b64encode(custom_file_content.encode()).decode()
+            else:
+                remediation_note = f"""# CloudCompliance Remediation
 
 **Resource:** {resource_id}
 **Severity:** {finding.get('severity', 'HIGH')}
@@ -208,8 +237,8 @@ After merging, run `make deploy` to restore the expected state.
 {finding.get('remediation', 'Run terraform apply')}
 ```
 """
-            # Get existing file SHA if exists
-            file_path = f"compliance/remediations/{resource_id.replace('/', '-')}-{timestamp}.md"
+                file_path = f"compliance/remediations/{resource_id.replace('/', '-')}-{timestamp}.md"
+                file_content_encoded = base64.b64encode(remediation_note.encode()).decode()
             file_url = f"https://api.github.com/repos/{self.github_repo}/contents/{file_path}"
 
             file_content = base64.b64encode(remediation_note.encode()).decode()
@@ -234,6 +263,8 @@ After merging, run `make deploy` to restore the expected state.
                     "severity": finding["severity"]
                 })
                 console.print(f"[cyan]📋 PR opened: {pr_url_str}[/cyan]")
+                from cloudcompliance.notifications import notify_remediation
+                notify_remediation(resource_id, pr_url_str, finding["severity"])
             else:
                 console.print(f"[yellow]Warning: PR creation failed for {resource_id}[/yellow]")
 
@@ -317,7 +348,8 @@ After merging, run `make deploy` to restore the expected state.
             "actions": self.actions_taken,
             "pull_requests": self.prs_opened
         }
-        log_path = Path(__file__).parent.parent / "compliance" / "remediation_log.json"
+        log_path = self.compliance_dir / "remediation_log.json"
+        log_path.parent.mkdir(parents=True, exist_ok=True)
         with open(log_path, "w") as f:
             json.dump(log, f, indent=2)
         console.print(f"\n[dim]Remediation log saved → {log_path}[/dim]")

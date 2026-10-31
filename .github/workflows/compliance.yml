@@ -63,14 +63,13 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Install Python dependencies
-        run: pip install rich
-         
-      - name: Install Python dependencies
+      - name: Install Python dependencies and package
         run: |
-          pip install rich boto3
-          pip install -e .
-     
+          pip install -e ".[dev]"
+
+      - name: Run Unit Tests
+        run: python -m unittest discover tests
+
       - name: Start LocalStack
         run: |
           docker run --rm -d \
@@ -110,7 +109,7 @@ jobs:
           terraform apply -var-file="$(pwd)/local.tfvars" -auto-approve)
 
       - name: Run Compliance Report
-        run: python compliance/report.py
+        run: cloudcompliance report
       
       - name: Run Drift Detection
         run: cloudcompliance drift --endpoint http://localhost:4566

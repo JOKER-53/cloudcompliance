@@ -5,6 +5,7 @@ Reads terraform.tfstate and maps resources to SOC2 Trust Service Criteria
 """
 
 import json
+import os
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -15,61 +16,52 @@ from rich import box
 
 console = Console()
 
-SOC2_CONTROLS = {
-    "CC6.1": {
-        "title": "Logical Access — Network Isolation",
-        "description": "Restrict logical access via private networking and ACLs",
-        "resources": ["aws_vpc", "aws_subnet", "aws_default_security_group"],
-    },
-    "CC6.2": {
-        "title": "Logical Access — Authentication Controls",
-        "description": "Enforce strong authentication, password policy, least privilege",
-        "resources": ["aws_iam_account_password_policy", "aws_iam_role", "aws_iam_policy", "aws_sns_topic"],
-    },
-    "CC6.3": {
-        "title": "Logical Access — Access Revocation",
-        "description": "Detect and alert on overly permissive IAM and resource policies",
-        "resources": ["aws_iam_role_policy", "aws_cloudwatch_metric_alarm"],
-    },
-    "CC6.6": {
-        "title": "Logical Access — Transmission Protection",
-        "description": "Protect data in transit — HTTPS only, deny plaintext",
-        "resources": ["aws_s3_bucket_policy"],
-    },
-    "CC6.7": {
-        "title": "Encryption — Data Protection",
-        "description": "Encrypt data at rest and in transit using KMS and HTTPS",
-        "resources": ["aws_kms_key", "aws_kms_alias", "aws_s3_bucket_server_side_encryption_configuration", "aws_s3_bucket_policy"],
-    },
-    "CC7.1": {
-        "title": "Threat Detection — Continuous Monitoring",
-        "description": "Monitor for anomalous activity and compliance drift",
-        "resources": ["aws_cloudwatch_metric_alarm", "aws_config_configuration_recorder", "aws_config_config_rule"],
-    },
-    "CC7.2": {
-        "title": "Audit Logging — Tamper-evident Records",
-        "description": "Log all activity with integrity validation and retention",
-        "resources": ["aws_s3_bucket_versioning", "aws_s3_bucket_public_access_block", "aws_config_delivery_channel", "aws_flow_log", "aws_cloudwatch_log_group"],
-    },
-    "CC7.3": {
-        "title": "Incident Response — Security Event Detection",
-        "description": "Detect and alert on unauthorized access and security incidents",
-        "resources": ["aws_cloudwatch_log_metric_filter", "aws_cloudwatch_log_group"],
-    },
-    "CC8.1": {
-        "title": "Change Management — IaC Controlled",
-        "description": "All infrastructure changes via version-controlled IaC",
-        "resources": ["aws_iam_role", "aws_config_configuration_recorder_status"],
-    },
-    "A1.1": {
-        "title": "Availability — Backup and Retention",
-        "description": "Ensure data availability via versioning, retention, and backup policies",
-        "resources": ["aws_s3_bucket_versioning", "aws_iam_role_policy_attachment"],
-    },
-}
+
+def get_default_compliance_dir() -> Path:
+    """Return default compliance output directory, supporting Lambda /tmp."""
+    if os.environ.get("LAMBDA_TASK_ROOT"):
+        return Path("/tmp/compliance")
+    if os.environ.get("COMPLIANCE_DIR"):
+        return Path(os.environ["COMPLIANCE_DIR"])
+    return Path.cwd() / "compliance"
+
+
+def get_default_tfstate_path() -> Path:
+    """Resolve default tfstate location based on current working directory."""
+    candidates = [
+        Path.cwd() / "terraform" / "terraform.tfstate",
+        Path.cwd() / "terraform.tfstate",
+    ]
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    return candidates[0]
+
+
+def load_controls(framework: str = "soc2") -> dict:
+    controls_path = Path(__file__).parent / "controls.json"
+    with open(controls_path) as f:
+        all_frameworks = json.load(f)
+        if framework not in all_frameworks:
+            console.print(f"[red]Error: Framework '{framework}' not found in controls.json[/red]")
+            sys.exit(1)
+        return all_frameworks[framework]
 
 
 def load_tfstate(path: str) -> dict:
+    if path.startswith("s3://"):
+        import boto3
+        s3 = boto3.client("s3")
+        path_without_scheme = path[5:]
+        bucket_name = path_without_scheme.split("/")[0]
+        key = "/".join(path_without_scheme.split("/")[1:])
+        try:
+            response = s3.get_object(Bucket=bucket_name, Key=key)
+            return json.loads(response['Body'].read().decode('utf-8'))
+        except Exception as e:
+            console.print(f"[red]Error fetching tfstate from S3: {e}[/red]")
+            sys.exit(1)
+
     tfstate_path = Path(path)
     if not tfstate_path.exists():
         console.print(f"[red]Error: tfstate not found at {path}[/red]")
@@ -92,18 +84,53 @@ def extract_resources(tfstate: dict) -> list:
     return resources
 
 
-def evaluate_controls(resources: list) -> dict:
-    found_types = set(r["type"] for r in resources)
+def get_resource_provider(res_type: str) -> str:
+    if not res_type:
+        return "other"
+    if res_type.startswith("aws_"):
+        return "aws"
+    if res_type.startswith("azurerm_") or res_type.startswith("azure_"):
+        return "azure"
+    if res_type.startswith("google_") or res_type.startswith("gcp_"):
+        return "gcp"
+    return "other"
+
+
+def evaluate_controls(resources: list, controls: dict, provider: str = "auto") -> dict:
+    found_types = set(r["type"] for r in resources if r.get("type"))
+
+    # Determine which cloud providers to evaluate
+    if provider and provider != "auto" and provider != "all":
+        target_providers = {provider.lower()}
+    elif provider == "all":
+        target_providers = {"aws", "azure", "gcp", "other"}
+    else:
+        # Auto-detect from resources present
+        detected = set(get_resource_provider(r["type"]) for r in resources if r.get("type"))
+        valid_detected = {p for p in detected if p != "other"}
+        target_providers = valid_detected if valid_detected else {"aws"}
+
     results = {}
-    for control_id, control in SOC2_CONTROLS.items():
-        matched = [t for t in control["resources"] if t in found_types]
-        missing = [t for t in control["resources"] if t not in found_types]
-        if len(matched) == len(control["resources"]):
+    for control_id, control in controls.items():
+        # Filter control resource requirements to the target provider(s)
+        control_resources = control.get("resources", [])
+        filtered_resources = [
+            t for t in control_resources
+            if get_resource_provider(t) in target_providers or get_resource_provider(t) == "other"
+        ]
+        # Fallback if control defines no resources for target provider
+        effective_resources = filtered_resources if filtered_resources else control_resources
+
+        matched = [t for t in effective_resources if t in found_types]
+        missing = [t for t in effective_resources if t not in found_types]
+
+        if len(matched) == len(effective_resources) and len(effective_resources) > 0:
             status = "PASS"
         elif len(matched) > 0:
             status = "PARTIAL"
         else:
             status = "FAIL"
+
         results[control_id] = {
             "title": control["title"],
             "description": control["description"],
@@ -114,10 +141,12 @@ def evaluate_controls(resources: list) -> dict:
     return results
 
 
-def save_markdown(results: dict, resources: list, score: int, pass_count: int):
-    md_path = Path(__file__).parent.parent / "compliance" / "compliance_report.md"
+def save_markdown(results: dict, resources: list, score: int, pass_count: int, framework: str = "soc2", output_dir: Path = None):
+    out_dir = Path(output_dir) if output_dir else get_default_compliance_dir()
+    out_dir.mkdir(parents=True, exist_ok=True)
+    md_path = out_dir / f"{framework}_compliance_report.md"
     with open(md_path, "w") as f:
-        f.write("# CloudCompliance — SOC2 Evidence Report\n\n")
+        f.write(f"# CloudCompliance — {framework.upper()} Evidence Report\n\n")
         f.write(f"**Generated:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}  \n")
         f.write(f"**Total resources provisioned:** {len(resources)}  \n")
         f.write(f"**Compliance score:** {score}% ({pass_count}/{len(results)} controls passing)\n\n")
@@ -134,7 +163,7 @@ def save_markdown(results: dict, resources: list, score: int, pass_count: int):
             matched = ", ".join(result["matched"][:3]) if result["matched"] else "none"
             f.write(f"| {control_id} | {result['title']} | {status_md} | {matched} |\n")
         f.write(f"\n## Summary\n\n")
-        f.write(f"SOC2 Compliance Score: **{score}%** ({pass_count}/{len(results)} controls passing)\n\n")
+        f.write(f"{framework.upper()} Compliance Score: **{score}%** ({pass_count}/{len(results)} controls passing)\n\n")
         f.write("## Standards Referenced\n\n")
         f.write("- AICPA SOC2 Trust Services Criteria 2017\n")
         f.write("- CIS AWS Foundations Benchmark v2.0\n")
@@ -142,10 +171,10 @@ def save_markdown(results: dict, resources: list, score: int, pass_count: int):
     console.print(f"[dim]Markdown report → {md_path}[/dim]")
 
 
-def print_report(results: dict, resources: list, output_path: Path = None):
+def print_report(results: dict, resources: list, output_path: Path = None, framework: str = "soc2", output_dir: Path = None):
     console.print()
     console.print(Panel.fit(
-        "[bold cyan]CloudCompliance — SOC2 Evidence Report[/bold cyan]\n"
+        f"[bold cyan]CloudCompliance — {framework.upper()} Evidence Report[/bold cyan]\n"
         f"[dim]Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}[/dim]\n"
         f"[dim]Total resources provisioned: {len(resources)}[/dim]",
         border_style="cyan"
@@ -174,10 +203,10 @@ def print_report(results: dict, resources: list, output_path: Path = None):
     console.print(table)
     console.print()
 
-    score = int((pass_count / len(results)) * 100)
+    score = int((pass_count / len(results)) * 100) if results else 0
     color = "green" if score >= 80 else "yellow" if score >= 50 else "red"
     console.print(Panel.fit(
-        f"[bold {color}]SOC2 Compliance Score: {score}% ({pass_count}/{len(results)} controls passing)[/bold {color}]",
+        f"[bold {color}]{framework.upper()} Compliance Score: {score}% ({pass_count}/{len(results)} controls passing)[/bold {color}]",
         border_style=color
     ))
 
@@ -196,134 +225,34 @@ def print_report(results: dict, resources: list, output_path: Path = None):
         "controls": results,
     }
 
-    if output_path is None:
-        output_path = Path(__file__).parent.parent / "compliance" / "compliance_report.json"
+    out_dir = Path(output_dir) if output_dir else get_default_compliance_dir()
+    out_dir.mkdir(parents=True, exist_ok=True)
 
-    with open(output_path, "w") as f:
+    if output_path is None:
+        target_output_path = out_dir / f"{framework}_compliance_report.json"
+    else:
+        target_output_path = Path(output_path)
+        target_output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    with open(target_output_path, "w") as f:
         json.dump(output, f, indent=2)
     console.print()
-    console.print(f"[dim]Evidence saved → {output_path}[/dim]")
+    console.print(f"[dim]Evidence saved → {target_output_path}[/dim]")
 
-    save_markdown(results, resources, score, pass_count)
+    save_markdown(results, resources, score, pass_count, framework, output_dir=out_dir)
 
     from cloudcompliance.history import save_score
-    save_score(output_path)
+    save_score(target_output_path)
+    # Slack notification
+    from cloudcompliance.notifications import notify_compliance_score
+    notify_compliance_score(score, pass_count, len(results), len(resources))
 
 
-def run(tfstate_path: str = None, output_path: str = None):
-    if tfstate_path is None:
-        tfstate_path = Path(__file__).parent.parent / "terraform" / "terraform.tfstate"
-    console.print(f"[dim]Reading state from: {tfstate_path}[/dim]")
-    tfstate = load_tfstate(str(tfstate_path))
+def run(tfstate_path: str = None, output_path: str = None, framework: str = "soc2", provider: str = "auto", output_dir: Path = None):
+    resolved_state = Path(tfstate_path) if tfstate_path else get_default_tfstate_path()
+    console.print(f"[dim]Reading state from: {resolved_state}[/dim]")
+    tfstate = load_tfstate(str(resolved_state))
     resources = extract_resources(tfstate)
-    results = evaluate_controls(resources)
-    print_report(results, resources, Path(output_path) if output_path else None)
-
-
-def main():
-    import argparse
-    parser = argparse.ArgumentParser(
-        description="CloudCompliance — SOC2 evidence, drift detection, history, AI assistant and auto-remediation"
-    )
-    subparsers = parser.add_subparsers(dest="command")
-
-    subparsers.add_parser("report", help="Generate SOC2 compliance evidence report")
-
-    drift_parser = subparsers.add_parser("drift", help="Detect infrastructure drift")
-    drift_parser.add_argument(
-        "--endpoint",
-        default="http://localhost:4566",
-        help="AWS endpoint URL (default: LocalStack)"
-    )
-
-    history_parser = subparsers.add_parser("history", help="Show compliance score history")
-    history_parser.add_argument(
-        "--limit",
-        type=int,
-        default=10,
-        help="Number of entries to show (default: 10)"
-    )
-    history_parser.add_argument(
-        "--export",
-        action="store_true",
-        help="Export history as JSON for auditors"
-    )
-
-    ask_parser = subparsers.add_parser("ask", help="Ask AI about your compliance state")
-    ask_parser.add_argument("question", help="Your compliance question")
-    ask_parser.add_argument(
-        "--api-key",
-        default=None,
-        help="NVIDIA NIM API key (or set NVIDIA_API_KEY env var)"
-    )
-
-    remediate_parser = subparsers.add_parser("remediate", help="Auto-remediate drift findings")
-    remediate_parser.add_argument(
-        "--dry-run",
-        action="store_true",
-        help="Show what would be done without making changes"
-    )
-    remediate_parser.add_argument(
-        "--endpoint",
-        default=None,
-        help="AWS endpoint URL"
-    )
-    
-    serve_parser = subparsers.add_parser("serve", help="Start live compliance dashboard")
-    serve_parser.add_argument(
-        "--port",
-        type=int,
-        default=8080,
-        help="Port to run dashboard on (default: 8080)"
-    )
-    serve_parser.add_argument(
-        "--host",
-        default="127.0.0.1",
-        help="Host to bind to (default: 127.0.0.1)"
-    )    
-
-    args = parser.parse_args()
-
-    tfstate_path = Path(__file__).parent.parent / "terraform" / "terraform.tfstate"
-
-    if args.command == "drift":
-        from cloudcompliance.drift.detector import DriftDetector
-        detector = DriftDetector(
-            tfstate_path=str(tfstate_path),
-            endpoint_url=args.endpoint
-        )
-        drift_count = detector.run()
-        sys.exit(1 if drift_count > 0 else 0)
-
-    elif args.command == "history":
-        from cloudcompliance.history import show_history, export_history
-        show_history(limit=args.limit)
-        if args.export:
-            export_history()
-
-    elif args.command == "ask":
-        from cloudcompliance.assistant import main as ask_main
-        ask_main(args.question, args.api_key)
-
-    elif args.command == "remediate":
-        from cloudcompliance.remediation import RemediationEngine
-        engine = RemediationEngine(
-            endpoint_url=args.endpoint,
-            dry_run=args.dry_run
-        )
-        engine.run()
-
-    elif args.command == "serve":
-        from cloudcompliance.dashboard import serve
-        serve(host=args.host, port=args.port)
-
-    else:
-        console.print(f"[dim]Reading state from: {tfstate_path}[/dim]")
-        tfstate = load_tfstate(str(tfstate_path))
-        resources = extract_resources(tfstate)
-        results = evaluate_controls(resources)
-        print_report(results, resources)
-
-
-if __name__ == "__main__":
-    main()
+    controls = load_controls(framework)
+    results = evaluate_controls(resources, controls, provider=provider)
+    print_report(results, resources, output_path=Path(output_path) if output_path else None, framework=framework, output_dir=output_dir)

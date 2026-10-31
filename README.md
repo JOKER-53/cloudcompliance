@@ -1,8 +1,8 @@
-![SOC2 Compliance](https://github.com/KADHIRAVANEG/cloudcompliance/actions/workflows/compliance.yml/badge.svg)
-[![Terraform Registry](https://img.shields.io/badge/Terraform%20Registry-cloudcompliance-7B42BC?logo=terraform)](https://registry.terraform.io/modules/KADHIRAVANEG/cloudcompliance/aws/latest)
+![SOC2 Compliance](https://github.com/JOKER-53/cloudcompliance/actions/workflows/compliance.yml/badge.svg)
+[![Terraform Registry](https://img.shields.io/badge/Terraform%20Registry-cloudcompliance-7B42BC?logo=terraform)](https://registry.terraform.io/modules/JOKER-53/cloudcompliance/aws/latest)
 [![PyPI version](https://img.shields.io/pypi/v/cloudcompliance?color=blue)](https://pypi.org/project/cloudcompliance/)
 [![PyPI downloads](https://img.shields.io/pypi/dm/cloudcompliance)](https://pypi.org/project/cloudcompliance/)
-[![Docker](https://img.shields.io/badge/Docker-ghcr.io-2496ED?logo=docker)](https://github.com/KADHIRAVANEG/cloudcompliance/pkgs/container/cloudcompliance)
+[![Docker](https://img.shields.io/badge/Docker-ghcr.io-2496ED?logo=docker)](https://github.com/JOKER-53/cloudcompliance/pkgs/container/cloudcompliance)
 ![Terraform](https://img.shields.io/badge/Terraform-1.15.6-7B42BC?logo=terraform)
 ![LocalStack](https://img.shields.io/badge/LocalStack-3.4.0-000000?logo=amazon-aws)
 ![Python](https://img.shields.io/badge/Python-3.11-3776AB?logo=python)
@@ -12,7 +12,7 @@
 
 > Infrastructure as Code that provisions a SOC2-aligned AWS security baseline
 > with 10 controls and 46 resources — deployable in one command.
-> Includes drift detection, AI compliance assistant, score history and auto-remediation.
+> Includes drift detection, AI compliance assistant, score history, auto-remediation and a live dashboard.
 
 ## The Problem
 
@@ -31,35 +31,101 @@ Every SOC2 control is provisioned automatically at infrastructure creation time.
 
 ---
 
-## CLI Commands
+## Quick Start
+
+**Requirements:** Python 3.9+, Terraform, Docker
 
 ```bash
-# Deploy SOC2 baseline
+# 1. Install CLI
+pip install cloudcompliance
+
+# 2. Clone the repo
+git clone https://github.com/JOKER-53/cloudcompliance.git
+cd cloudcompliance
+cp .env.example .env  # add your API keys
+
+# 3. Start everything in one command
+bash scripts/start.sh
+
+# Or step by step:
+docker run --rm -d -p 4566:4566 localstack/localstack:3.4.0
+make deploy
+cloudcompliance report
+cloudcompliance drift
+cloudcompliance serve   # → http://localhost:8080
+```
+
+## What's New in v2.0 (Advanced Features)
+
+- **Multi-Framework Support:** In addition to SOC2, inherently supports HIPAA and PCI-DSS using a newly decoupled JSON rule engine (`controls.json`).
+- **Multi-Cloud Readiness:** Maps standard controls directly to AWS, Azure (`azurerm`), and GCP (`google`) Terraform resources natively.
+- **Custom OPA/Rego Policies:** Write your own business-specific rules in Rego and run them alongside standard controls (`--rego`).
+- **Remote State Support:** Natively pull `terraform.tfstate` dynamically from AWS S3 (`--tfstate s3://...`).
+- **Automated TF Generation:** Remediation engine now auto-generates declarative **Terraform 1.5 import blocks** for unmanaged drift and opens GitHub PRs.
+- **Event-Driven Serverless Scanning:** Deploy the scanner as an AWS Lambda via EventBridge rules to instantly evaluate compliance the millisecond CloudTrail detects out-of-band mutations.
+
+---
+
+```bash
+## CLI Commands
+
+# Deploy baseline infrastructure
 make deploy
 
-# Generate compliance evidence report
+# Generate compliance evidence report (Default: SOC2)
 cloudcompliance report
+cloudcompliance report --framework hipaa
+cloudcompliance report --framework pcidss
+
+# Use remote state (S3) or custom OPA policies
+cloudcompliance report --tfstate s3://my-bucket/terraform.tfstate --rego custom-policy.rego
 
 # Detect infrastructure drift
 cloudcompliance drift
+cloudcompliance drift --tfstate s3://my-bucket/terraform.tfstate
 
-# Auto-remediate drift findings
+# Auto-remediate drift findings (Auto-generates Terraform imports)
 cloudcompliance remediate
 cloudcompliance remediate --dry-run
 
-# View compliance score history (SOC2 Type II evidence)
+# View compliance score history
 cloudcompliance history
 cloudcompliance history --export
 
 # Ask AI about your compliance state
 cloudcompliance ask "am I ready for a SOC2 audit?"
-cloudcompliance ask "what is my biggest security risk?"
-cloudcompliance ask "explain CC7.2 and how I implement it"
+
+# Open live compliance dashboard
+cloudcompliance serve
+
+# Scheduled drift detection (runs every hour)
+cloudcompliance schedule
 ```
 
 ---
 
+## Live Dashboard
+
+![CloudCompliance Live Dashboard](docs/images/dashboard.png)
+
+```bash
+cloudcompliance serve
+```
+
+Opens a professional dashboard at `http://localhost:8080` showing:
+
+- Real-time compliance score ring
+- All 10 SOC2 controls with pass/fail status
+- Drift findings with PR links
+- Compliance score history chart
+- Auto-remediation actions log
+- Auto-refreshes every 30 seconds
+
+---
+
 ## SOC2 Control Coverage
+
+![SOC2 Compliance Report](docs/images/cli-compliance-report.png)
 
 | Control | Title | Resources Enforced |
 |---------|-------|--------------------|
@@ -128,38 +194,14 @@ cloudcompliance ask "explain CC7.2 and how I implement it"
 
 ---
 
-## Quick Start
-
-**Requirements:** Terraform, Docker, Python 3.9+
-
-```bash
-# Install CLI
-pip install cloudcompliance
-
-# Start LocalStack (free local AWS)
-docker run --rm -d -p 4566:4566 localstack/localstack:3.4.0
-
-# Deploy all SOC2 controls
-make deploy
-
-# Generate compliance evidence report
-make report
-
-# Check for drift
-make drift
-
-# Auto-remediate
-make remediate
-```
-
----
-
 ## Auto-Remediation
 
-When drift is detected, CloudCompliance automatically:
+![Auto-Remediation Engine](docs/images/cli-auto-remediation.png)
+
+When drift is detected, CloudCompliance closes the loop automatically:
 
 - **LOW RISK** — patches resources instantly (tags, labels)
-- **HIGH RISK** — opens a GitHub PR with the exact fix for human review
+- **HIGH RISK** — opens a GitHub PR with exact fix for human review
 - **CRITICAL** — alerts immediately with remediation steps
 
 ```bash
@@ -167,17 +209,54 @@ $ cloudcompliance drift
 🟡 HIGH  cloudcompliance-encrypted-data  DELETED
 
 $ cloudcompliance remediate
-📋 PR opened: https://github.com/KADHIRAVANEG/cloudcompliance/pull/32
+📋 PR opened: https://github.com/JOKER-53/cloudcompliance/pull/32
 Remediation log saved → compliance/remediation_log.json
 ```
 
 ---
 
+## Slack Notifications
+
+Add your Slack webhook to `.env` and get automatic alerts:
+
+```bash
+SLACK_WEBHOOK_URL=https://hooks.slack.com/services/your/webhook/here
+```
+
+CloudCompliance sends Slack messages for:
+- ✅ Compliance report generated with score
+- ⚠️ Drift detected — with resource details
+- 🔧 Remediation PR opened — with PR link
+- ✅ No drift confirmed
+
+## Scheduled Drift Detection
+
+![Drift Detection Report](docs/images/cli-drift-detection.png)
+
+Run drift detection automatically every hour:
+
+```bash
+# Run every 60 minutes (default)
+cloudcompliance schedule
+
+# Run every 30 minutes
+cloudcompliance schedule --interval 30
+
+# Against real AWS
+cloudcompliance schedule --endpoint "" --interval 60
+```
+
+>Sends Slack alert automatically when drift is found.
+
 ## AI Compliance Assistant
+
+![AI Compliance Assistant](docs/images/cli-ai-assistant.png)
 
 Powered by NVIDIA NIM. Reads your actual tfstate and compliance reports.
 
 ```bash
+export NVIDIA_API_KEY="your-key"
+
 $ cloudcompliance ask "am I ready for a SOC2 audit?"
 
 > Your compliance score is 100% (10/10 controls passing).
@@ -185,15 +264,11 @@ $ cloudcompliance ask "am I ready for a SOC2 audit?"
 > Recommend: run 'cloudcompliance remediate' to open a fix PR.
 ```
 
-```bash
-# Setup
-export NVIDIA_API_KEY="your-key"
-cloudcompliance ask "what controls am I missing?"
-```
-
 ---
 
 ## Compliance Score History
+
+![Compliance Score History Timeline](docs/images/cli-compliance-history.png)
 
 SOC2 Type II requires evidence over time. Every report run is saved automatically.
 
@@ -211,14 +286,38 @@ $ cloudcompliance history --export
 
 ---
 
+## Environment Setup
+
+Copy `.env.example` to `.env` and fill in your values:
+
+```bash
+cp .env.example .env
+```
+
+```bash
+# Required for AI assistant
+NVIDIA_API_KEY=your-nvidia-nim-key
+
+# Required for auto-remediation PRs
+GITHUB_TOKEN=your-github-token
+GITHUB_REPO=JOKER-53/cloudcompliance
+
+# LocalStack endpoint (leave as-is for local dev)
+LOCALSTACK_ENDPOINT=http://localhost:4566
+```
+
+---
+
 ## CI/CD Compliance Gate
 
-Every pull request automatically:
+Every pull request automatically runs:
+
 1. **Terraform Validate** — format + syntax check
 2. **Checkov Security Scan** — 500+ security rules
 3. **SOC2 Compliance Check** — deploys to LocalStack, runs report, blocks if score < 100%
 
 ---
+
 
 ## Project Structure
 
@@ -227,27 +326,42 @@ Every pull request automatically:
 cloudcompliance/
 ├── terraform/
 │   ├── main.tf
+│   ├── variables.tf
+│   ├── local.tfvars           # LocalStack config
+│   ├── prod.tfvars            # Real AWS config
 │   └── modules/
-│       ├── networking/     # CC6.1
-│       ├── logging/        # CC7.2
-│       ├── encryption/     # CC6.7
-│       ├── iam/            # CC6.2
-│       ├── monitoring/     # CC7.1
-│       ├── config/         # CC7.1 + CC7.2
-│       ├── incident_response/ # CC7.3
-│       ├── access_analyzer/   # CC6.3
-│       └── availability/   # A1.1
+│       ├── networking/        # CC6.1 — VPC, subnets, flow logs
+│       ├── logging/           # CC7.2 — Audit bucket
+│       ├── encryption/        # CC6.7 — KMS, encrypted S3
+│       ├── iam/               # CC6.2 — Password policy, roles
+│       ├── monitoring/        # CC7.1 — CloudWatch alarms
+│       ├── config/            # CC7.1 + CC7.2 — Config rules
+│       ├── incident_response/ # CC7.3 — Log metric filters
+│       ├── access_analyzer/   # CC6.3 — IAM access analyzer
+│       └── availability/      # A1.1 — Versioning, backup
 ├── cloudcompliance/
-│   ├── report.py           # SOC2 evidence generator
-│   ├── history.py          # Score timeline (SQLite)
-│   ├── assistant.py        # AI compliance assistant
+│   ├── cli.py                 # Central CLI router
+│   ├── controls.json          # Abstracted mappings (SOC2, HIPAA, PCI-DSS)
+│   ├── report.py              # Evidence generator engine
+│   ├── history.py             # Score timeline (SQLite)
+│   ├── assistant.py           # AI compliance assistant
+│   ├── dashboard.py           # Live dashboard (FastAPI)
+│   ├── lambda_handler.py      # AWS Lambda event-driven scanner
+│   ├── opa.py                 # OPA/Rego custom policy engine
 │   ├── drift/
-│   │   └── detector.py     # Drift detection engine
-│   └── remediation.py      # Auto-remediation engine
-├── compliance/             # Generated reports
-├── docs/                   # Project website
-├── .github/workflows/      # CI/CD gate
-├── .env.example            # Environment variables template
+│   │   └── detector.py        # Drift detection engine
+│   └── remediation.py         # Auto-remediation engine (generates import blocks)
+├── compliance/                # Ignored Generated artifacts (.md, .json, .db)
+├── terraform/
+│   └── modules/
+│       ├── event_driven_scanning/ # Lambda + EventBridge serverless setup
+│       └── ...
+├── tests/                     # Pytest suite
+├── docs/                      # Project website (GitHub Pages)
+├── scripts/
+│   └── start.sh               # One-command startup
+├── .github/workflows/         # CI/CD gate
+├── .env.example               # Environment variables template
 └── Makefile
 ```
 
@@ -300,12 +414,32 @@ flowchart TD
 ```
 ---
 
+## Makefile Commands
+
+```bash
+make start          # Start LocalStack + deploy + report + dashboard
+make deploy         # Deploy all SOC2 controls to LocalStack
+make deploy-prod    # Deploy to real AWS
+make validate       # Terraform format + validate
+make report         # Generate SOC2 evidence report
+make drift          # Run drift detection
+make history        # Show score history
+make history-export # Export audit evidence JSON
+make remediate      # Auto-remediate drift findings
+make remediate-dry  # Preview remediation without changes
+make serve          # Open live dashboard at :8080
+make destroy        # Tear down all infrastructure
+make all            # deploy + report + drift + history
+```
+
+---
+
 ## Use as a Terraform Module
 
 ```hcl
 module "soc2_baseline" {
-  source  = "KADHIRAVANEG/cloudcompliance/aws"
-  version = "1.4.0"
+  source  = "JOKER-53/cloudcompliance/aws"
+  version = "1.5.0"
 
   project_name = "my-startup"
   environment  = "prod"
@@ -318,17 +452,17 @@ module "soc2_baseline" {
 ## Install Options
 
 ```bash
-# Python CLI
+# Python CLI (recommended)
 pip install cloudcompliance
 
 # Docker
-docker pull ghcr.io/kadhiravaneg/cloudcompliance:latest
+docker pull ghcr.io/joker-53/cloudcompliance:latest
 docker run -v ~/cloudcompliance/terraform:/app/terraform \
-  ghcr.io/kadhiravaneg/cloudcompliance:latest
+  ghcr.io/joker-53/cloudcompliance:latest
 
 # Terraform Registry
-source = "KADHIRAVANEG/cloudcompliance/aws"
-version = "1.4.0"
+source  = "JOKER-53/cloudcompliance/aws"
+version = "1.5.0"
 ```
 
 ---
@@ -360,12 +494,26 @@ version = "1.4.0"
 
 ## Tech Stack
 
-`Terraform` · `Python` · `AWS` · `LocalStack` · `GitHub Actions` · `NVIDIA NIM` · `SQLite` · `KMS` · `IAM` · `CloudWatch` · `SNS` · `AWS Config`
+`Terraform` · `Python` · `FastAPI` · `AWS` · `Azure` · `GCP` · `LocalStack` · `GitHub Actions` · `NVIDIA NIM` · `SQLite` · `OPA/Rego` · `pytest`
 
+---
+
+## Changelog
+
+| Version | What's new |
+|---------|-----------|
+| v2.0.0 | Multi-cloud, HIPAA/PCI-DSS, OPA/Rego custom policies, S3 remote state, TF 1.5 import generation, and EventBridge real-time scanning |
+| v1.6.0 | Slack notifications + scheduled drift detection |
+| v1.5.0 | Live dashboard — `cloudcompliance serve` |
+| v1.4.0 | Auto-remediation — GitHub PR for high-risk drift |
+| v1.3.0 | Compliance score history — SOC2 Type II evidence |
+| v1.2.0 | Drift detection — `cloudcompliance drift` |
+| v1.1.0 | 10 SOC2 controls, 46 resources, markdown reports |
+| v1.0.0 | Initial release — SOC2 baseline IaC |
 ---
 
 ## Author
 
 **Kadhiravan E.G.** — Cybersecurity student  
-GitHub: [@KADHIRAVANEG](https://github.com/KADHIRAVANEG)  
-Website: [kadhiravaneg.github.io/cloudcompliance](https://kadhiravaneg.github.io/cloudcompliance)
+GitHub: [@JOKER-53](https://github.com/JOKER-53)  
+Website: [CloudCompliance](https://joker-53.github.io/cloudcompliance)
